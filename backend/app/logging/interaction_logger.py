@@ -4,7 +4,11 @@ import logging
 import os
 
 
-def build_interaction_logger(log_dir="backend/logs", name="interactions"):
+DEFAULT_LOG_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "logs"))
+
+
+def build_interaction_logger(log_dir=None, name="interactions"):
+    log_dir = log_dir or DEFAULT_LOG_DIR
     os.makedirs(log_dir, exist_ok=True)
     logger = logging.getLogger(name)
     if not logger.handlers:

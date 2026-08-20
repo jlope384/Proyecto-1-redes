@@ -4,7 +4,7 @@ __pycache__/
 venv/
 .env
 *.egg-info/
-backend/logs/
+logs/
 node_modules/
 dist/
 .pytest_cache/
