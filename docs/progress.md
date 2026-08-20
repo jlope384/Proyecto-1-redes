@@ -8,36 +8,38 @@ Read this file at the start of every autonomous session and update the Status se
 ## Status
 
 ### Done
-- [x] Ollama LLM client (`backend/app/llm/ollama_client.py`) — HTTP call to `/api/chat`
-- [x] Chat session with context history (`backend/app/chat/session.py`)
-- [x] Structured interaction logger (`backend/app/logging/interaction_logger.py`)
+- [x] Ollama LLM client (`backend/app/llm/ollama_client.py`) — HTTP call to `/api/chat`,
+      plus `chat_raw` for tool-calling
+- [x] Chat session with context history (`backend/app/chat/session.py`), incl. tool_calls/tool
+      messages
+- [x] Structured interaction logger (`backend/app/logging/interaction_logger.py`) — now also
+      logs every MCP request/response
 - [x] Interactive CLI host (`backend/app/main.py`)
-- [x] Unit tests for the Ollama client
+- [x] MCP JSON-RPC client core (`backend/app/mcp_client/`): `initialize` handshake,
+      `tools/list`, `tools/call`, `resources/list`, `resources/read`, over a stdio subprocess
+      transport (`transports/stdio.py`). Hand-rolled, no MCP SDK.
+- [x] Sales MCP server (`backend/mcp_server_sales/`): tools `buscar_productos`,
+      `consultar_inventario`, `consultar_pedido`, `recomendar_complementos`,
+      `generar_enlace_de_pago`; resources for shipping/warranty/returns policy. Hand-rolled
+      JSON-RPC over stdio, mock data in `data/catalog.py`.
+- [x] Chatbot wired to the sales MCP server via Ollama tool-calling (`backend/app/main.py`) —
+      the LLM decides when to call a tool, the chatbot executes it through the real MCP client.
+- [x] End-to-end demo script (`backend/app/demo_mcp_sales.py`) exercising the full protocol
+      without the LLM in the loop.
+- [x] Unit tests for the Ollama client, MCP client core (fake transport), and the sales server's
+      JSON-RPC handlers (14 tests, `python -m pytest` from `backend/`)
 - [x] README with setup/usage instructions
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-1. MCP JSON-RPC core: message framing and request/response types per the spec
-   (`initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`),
-   implemented by hand in `backend/app/mcp_client/`.
-2. MCP client stdio transport (`backend/app/mcp_client/transports/stdio.py`) that
-   launches an MCP server as a subprocess and exchanges JSON-RPC messages over
-   stdin/stdout.
-3. Wire the official Filesystem MCP server (`@modelcontextprotocol/server-filesystem`
-   via `npx`) into the chatbot as a callable tool.
-4. Wire the official Git MCP server (`mcp-server-git`) into the chatbot. Demo scenario:
+1. Wire the official Filesystem MCP server (`@modelcontextprotocol/server-filesystem`
+   via `npx`) into the chatbot as a callable tool, alongside the sales server.
+2. Wire the official Git MCP server (`mcp-server-git`) into the chatbot. Demo scenario:
    ask the chatbot to create a repo, add a README, and commit it.
-5. Design and implement `mcp_server_sales` (`backend/mcp_server_sales/`): tools
-   `buscar_productos`, `consultar_inventario`, `consultar_pedido`,
-   `recomendar_complementos`, `generar_enlace_de_pago`; resources for shipping,
-   warranty and returns policy. Manual JSON-RPC over stdio, in-memory/mock data in
-   `backend/mcp_server_sales/data/`. See `docs/annotated-Propuesta mcp.pdf` for the
-   original use-case proposal.
-6. Wire `mcp_server_sales` into the chatbot as another MCP client connection; write
-   its spec doc at `docs/spec/mcp_server_sales.md`.
-7. Route every MCP request/response through the existing `interaction_logger`; add a
-   way to display the log from the CLI (e.g. `python -m app.main --show-log`).
-8. Tests for the MCP client core and `mcp_server_sales` tool logic (mock the stdio
-   transport — no live subprocess needed for unit tests).
+3. Write the sales server's spec doc at `docs/spec/mcp_server_sales.md` (tools, params,
+   resources, example requests/responses) — required deliverable per the project brief.
+4. Add a way to display the interaction log from the CLI (e.g. `python -m app.main --show-log`).
+5. `mcp_server_sales` remote transport (HTTP) so the same server can run on a cloud host —
+   scaffold only; actual cloud deployment is out of scope here (see below).
 
 ### Explicitly OUT of scope for the autonomous routine (needs the human)
 - Remote deployment of `mcp_server_sales` to Google Cloud Run / Cloudflare (needs a
