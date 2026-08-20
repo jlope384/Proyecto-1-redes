@@ -39,6 +39,19 @@ def test_tools_call_buscar_productos():
     assert products[0]["sku"] == "CAM-001"
 
 
+def test_tools_call_buscar_productos_matches_words_out_of_order():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/call",
+            "params": {"name": "buscar_productos", "arguments": {"query": "camisa azul"}},
+        }
+    )
+    products = json.loads(response["result"]["content"][0]["text"])
+    assert any(p["sku"] == "CAM-001" for p in products)
+
+
 def test_tools_call_unknown_sku_returns_tool_error_not_protocol_error():
     response = handle_message(
         {

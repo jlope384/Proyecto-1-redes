@@ -55,12 +55,13 @@ TOOL_SPECS = [
 
 
 def buscar_productos(query):
-    query = query.lower()
-    return [
-        p
-        for p in PRODUCTS
-        if query in p["nombre"].lower() or query in p["descripcion"].lower()
-    ]
+    words = query.lower().split()
+    matches = []
+    for p in PRODUCTS:
+        haystack = f"{p['nombre']} {p['descripcion']}".lower()
+        if all(word in haystack for word in words):
+            matches.append(p)
+    return matches
 
 
 def consultar_inventario(sku):
