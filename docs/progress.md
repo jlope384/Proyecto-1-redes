@@ -64,6 +64,21 @@ Read this file at the start of every autonomous session and update the Status se
   configured globally on the machine running it — check `git config --global user.name/user.email`
   are set, or `git_commit` calls will fail.
 
+### BLOCKED: could not push this session's commits to origin/main
+This session made 4 real, tested, atomic commits locally (filesystem MCP server, git MCP
+server, sales server spec doc, this progress update — see git log), but **could not push them**:
+both `git push` (403: "Claude doesn't have GitHub access to jlope384/Proyecto-1-redes for your
+organization") and the GitHub API write path (`git/trees` and `contents` endpoints, 403:
+"Resource not accessible by integration") were rejected. Read access works fine; this is a
+write-permission gap on the Claude GitHub App installation for this repo/account, not something
+fixable from inside the sandbox.
+
+**To fix**: reconnect/reinstall the Claude GitHub App with write access — either from
+claude.ai Settings → Connectors (reconnect GitHub), or have an org admin grant it at
+https://github.com/apps/claude/installations/select_target — then re-run this routine (or push
+manually) so these commits land on origin/main. The commits themselves are good; nothing here
+needs to be redone, only pushed.
+
 ### Explicitly OUT of scope for the autonomous routine (needs the human)
 - Remote deployment of `mcp_server_sales` to Google Cloud Run / Cloudflare (needs a
   real cloud account and credentials).
