@@ -1,18 +1,23 @@
 """Interactive command-line chatbot host: connects to Ollama, keeps session context, and
-lets the LLM call tools exposed by the sales MCP server (JSON-RPC over stdio).
+lets the LLM call tools exposed by multiple MCP servers (JSON-RPC over stdio).
 """
 import sys
+from pathlib import Path
 
 from app.chat.session import ChatSession
 from app.llm.ollama_client import OllamaClient, OllamaConnectionError
 from app.logging.interaction_logger import build_interaction_logger, log_interaction
-from app.mcp_client.adapters import mcp_tool_to_ollama_tool
 from app.mcp_client.client import MCPClient
+from app.mcp_client.registry import ToolRegistry
 from app.mcp_client.transports.stdio import StdioTransport
+
+WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
 
 SYSTEM_PROMPT = (
     "You are a helpful sales assistant for a clothing store. Use the available tools "
-    "to answer questions about products, stock, orders and payment links instead of guessing."
+    "to answer questions about products, stock, orders and payment links instead of guessing. "
+    "You also have filesystem tools scoped to a local workspace folder, in case the user asks "
+    "you to save or read a note."
 )
 
 
@@ -25,13 +30,25 @@ def connect_sales_mcp_server(logger):
     return client
 
 
-def handle_tool_calls(mcp_client, tool_calls, session, logger):
+def connect_filesystem_mcp_server(logger, workspace_dir):
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    transport = StdioTransport("npx", ["-y", "@modelcontextprotocol/server-filesystem", str(workspace_dir)])
+    client = MCPClient(transport, server_name="filesystem")
+    log_interaction(logger, "mcp:filesystem", "request", {"method": "initialize"})
+    server_info = client.initialize()
+    log_interaction(logger, "mcp:filesystem", "response", server_info)
+    return client
+
+
+def handle_tool_calls(registry, tool_calls, session, logger):
     for call in tool_calls:
         name = call["function"]["name"]
         arguments = call["function"]["arguments"]
-        log_interaction(logger, "mcp:sales", "request", {"method": "tools/call", "name": name, "arguments": arguments})
-        result = mcp_client.call_tool(name, arguments)
-        log_interaction(logger, "mcp:sales", "response", result)
+        client = registry.client_for(name)
+        tag = f"mcp:{client.server_name}"
+        log_interaction(logger, tag, "request", {"method": "tools/call", "name": name, "arguments": arguments})
+        result = client.call_tool(name, arguments)
+        log_interaction(logger, tag, "response", result)
         text = result["content"][0]["text"]
         session.add_tool_result(name, text)
 
@@ -45,10 +62,19 @@ def run():
     session = ChatSession(system_prompt=SYSTEM_PROMPT)
     logger = build_interaction_logger()
 
-    mcp_client = connect_sales_mcp_server(logger)
-    ollama_tools = [mcp_tool_to_ollama_tool(spec) for spec in mcp_client.list_tools()]
+    sales_client = connect_sales_mcp_server(logger)
+    filesystem_client = connect_filesystem_mcp_server(logger, WORKSPACE_DIR)
+    mcp_clients = [sales_client, filesystem_client]
 
-    print(f"Connected to Ollama model '{llm_client.model}' and mcp-server-sales. Type 'exit' to quit.")
+    registry = ToolRegistry()
+    for client in mcp_clients:
+        registry.register(client)
+    ollama_tools = registry.ollama_tools()
+
+    print(
+        f"Connected to Ollama model '{llm_client.model}', mcp-server-sales and the filesystem "
+        "MCP server. Type 'exit' to quit."
+    )
     try:
         while True:
             user_input = input("You: ").strip()
@@ -71,7 +97,7 @@ def run():
 
             if message.get("tool_calls"):
                 session.add_assistant_message(message.get("content", ""), tool_calls=message["tool_calls"])
-                handle_tool_calls(mcp_client, message["tool_calls"], session, logger)
+                handle_tool_calls(registry, message["tool_calls"], session, logger)
 
                 log_interaction(logger, "llm", "request", session.history())
                 followup = llm_client.chat_raw(session.history())
@@ -83,7 +109,8 @@ def run():
             session.add_assistant_message(reply)
             print(f"Bot: {reply}")
     finally:
-        mcp_client.close()
+        for client in mcp_clients:
+            client.close()
 
 
 if __name__ == "__main__":

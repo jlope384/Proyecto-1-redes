@@ -21,13 +21,18 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
 - **Chatbot uses the MCP server via the LLM's tool-calling**: `backend/app/main.py` gives Ollama
   the sales server's tools; when the model decides to call one, the chatbot executes it through the
   real MCP client and feeds the result back for a grounded answer.
+- **Official Filesystem MCP server**: `backend/app/main.py` also launches the official
+  `@modelcontextprotocol/server-filesystem` (via `npx`) scoped to `backend/workspace/`, and merges
+  its tools with the sales server's through `app/mcp_client/registry.py`, which routes each tool
+  call to the server that owns it. Ask the bot to save or read a note and it will use it.
 
-More features (official Filesystem/Git MCP servers, remote deployment, Wireshark analysis) will be
-added incrementally as the project progresses — see `docs/progress.md` for the live backlog.
+More features (official Git MCP server, remote deployment, Wireshark analysis) will be added
+incrementally as the project progresses — see `docs/progress.md` for the live backlog.
 
 ## Requirements
 
 - Python 3.10+
+- Node.js + `npx` (used to run the official Filesystem MCP server)
 - [Ollama](https://ollama.com/) installed and running locally, with a model pulled, e.g.:
 
   ```
