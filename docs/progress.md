@@ -29,17 +29,40 @@ Read this file at the start of every autonomous session and update the Status se
 - [x] Unit tests for the Ollama client, MCP client core (fake transport), and the sales server's
       JSON-RPC handlers (14 tests, `python -m pytest` from `backend/`)
 - [x] README with setup/usage instructions
+- [x] Official Filesystem MCP server (`@modelcontextprotocol/server-filesystem`, launched via
+      `npx`) wired into the chatbot as a second tool source, scoped to `backend/workspace/`.
+      Added `app/mcp_client/registry.py` (`ToolRegistry`) so tool calls from the LLM route to
+      whichever connected server owns that tool name, and reject duplicate tool names across
+      servers. Verified end-to-end (write_file + read_text_file through the real subprocess,
+      alongside a real sales-server call) and unit-tested (`tests/test_mcp_registry.py`).
+- [x] Official Git MCP server (`mcp-server-git`, launched via `uvx`) wired in as a third tool
+      source, operating on `backend/workspace/demo-repo/`. That server ships no `git_init` tool,
+      so `app/main.py:ensure_git_repo` bootstraps the repo itself on first connect (idempotent,
+      unit-tested in `tests/test_main_git_bootstrap.py` with the real `git` binary). Verified the
+      full demo scenario end-to-end for real: LLM-style tool calls write a README via the
+      filesystem server, then `git_add`/`git_commit`/`git_log` via the git server produce a real
+      commit.
+- [x] Sales server spec doc at `docs/spec/mcp_server_sales.md`: every tool and resource (params,
+      JSON Schema, example requests/responses) and the error-handling model (JSON-RPC error vs.
+      `isError: true` result), all verified against real server output via `demo_mcp_sales.py`.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-1. Wire the official Filesystem MCP server (`@modelcontextprotocol/server-filesystem`
-   via `npx`) into the chatbot as a callable tool, alongside the sales server.
-2. Wire the official Git MCP server (`mcp-server-git`) into the chatbot. Demo scenario:
-   ask the chatbot to create a repo, add a README, and commit it.
-3. Write the sales server's spec doc at `docs/spec/mcp_server_sales.md` (tools, params,
-   resources, example requests/responses) — required deliverable per the project brief.
-4. Add a way to display the interaction log from the CLI (e.g. `python -m app.main --show-log`).
-5. `mcp_server_sales` remote transport (HTTP) so the same server can run on a cloud host —
+1. Add a way to display the interaction log from the CLI (e.g. `python -m app.main --show-log`).
+2. `mcp_server_sales` remote transport (HTTP) so the same server can run on a cloud host —
    scaffold only; actual cloud deployment is out of scope here (see below).
+
+### Needs verification by the student on their own machine
+- Full live run of `python -m app.main` with a real Ollama server: the sandbox this session ran
+  in has no `localhost:11434`, so the three-way tool routing (sales + filesystem + git) was
+  verified end-to-end with real subprocesses but with the LLM call driven directly rather than
+  through Ollama's tool-calling. Please run it once locally and confirm the model actually picks
+  the right tool (filesystem vs. git vs. sales) from natural-language prompts.
+- New local requirements as of this session: Node.js (`npx`, for the filesystem server) and
+  [uv](https://docs.astral.sh/uv/) (`uvx`, for the git server), on top of Ollama. Both are already
+  documented in the README.
+- The git demo repo (`backend/workspace/demo-repo/`) commits using whatever `git` identity is
+  configured globally on the machine running it — check `git config --global user.name/user.email`
+  are set, or `git_commit` calls will fail.
 
 ### Explicitly OUT of scope for the autonomous routine (needs the human)
 - Remote deployment of `mcp_server_sales` to Google Cloud Run / Cloudflare (needs a
