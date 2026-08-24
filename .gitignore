@@ -8,3 +8,7 @@ logs/
 node_modules/
 dist/
 .pytest_cache/
+
+# runtime scratch space for the filesystem/git MCP servers
+backend/workspace/*
+!backend/workspace/.gitkeep

@@ -1,6 +1,7 @@
 """Interactive command-line chatbot host: connects to Ollama, keeps session context, and
 lets the LLM call tools exposed by multiple MCP servers (JSON-RPC over stdio).
 """
+import subprocess
 import sys
 from pathlib import Path
 
@@ -12,12 +13,14 @@ from app.mcp_client.registry import ToolRegistry
 from app.mcp_client.transports.stdio import StdioTransport
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
+GIT_REPO_DIR = WORKSPACE_DIR / "demo-repo"
 
 SYSTEM_PROMPT = (
     "You are a helpful sales assistant for a clothing store. Use the available tools "
     "to answer questions about products, stock, orders and payment links instead of guessing. "
     "You also have filesystem tools scoped to a local workspace folder, in case the user asks "
-    "you to save or read a note."
+    f"you to save or read a note, and git tools for the repository at {GIT_REPO_DIR}, in case "
+    "the user asks you to add or commit a file there."
 )
 
 
@@ -37,6 +40,24 @@ def connect_filesystem_mcp_server(logger, workspace_dir):
     log_interaction(logger, "mcp:filesystem", "request", {"method": "initialize"})
     server_info = client.initialize()
     log_interaction(logger, "mcp:filesystem", "response", server_info)
+    return client
+
+
+def ensure_git_repo(repo_path):
+    """The official git MCP server has no git_init tool, so the host bootstraps the demo
+    repository itself the first time it connects (a no-op on later runs)."""
+    repo_path.mkdir(parents=True, exist_ok=True)
+    if not (repo_path / ".git").is_dir():
+        subprocess.run(["git", "init", str(repo_path)], check=True, capture_output=True, text=True)
+
+
+def connect_git_mcp_server(logger, repo_path):
+    ensure_git_repo(repo_path)
+    transport = StdioTransport("uvx", ["mcp-server-git"])
+    client = MCPClient(transport, server_name="git")
+    log_interaction(logger, "mcp:git", "request", {"method": "initialize"})
+    server_info = client.initialize()
+    log_interaction(logger, "mcp:git", "response", server_info)
     return client
 
 
@@ -64,7 +85,8 @@ def run():
 
     sales_client = connect_sales_mcp_server(logger)
     filesystem_client = connect_filesystem_mcp_server(logger, WORKSPACE_DIR)
-    mcp_clients = [sales_client, filesystem_client]
+    git_client = connect_git_mcp_server(logger, GIT_REPO_DIR)
+    mcp_clients = [sales_client, filesystem_client, git_client]
 
     registry = ToolRegistry()
     for client in mcp_clients:
@@ -72,8 +94,8 @@ def run():
     ollama_tools = registry.ollama_tools()
 
     print(
-        f"Connected to Ollama model '{llm_client.model}', mcp-server-sales and the filesystem "
-        "MCP server. Type 'exit' to quit."
+        f"Connected to Ollama model '{llm_client.model}', mcp-server-sales, the filesystem MCP "
+        "server and the git MCP server. Type 'exit' to quit."
     )
     try:
         while True:

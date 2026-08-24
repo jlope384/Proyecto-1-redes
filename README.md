@@ -25,14 +25,20 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
   `@modelcontextprotocol/server-filesystem` (via `npx`) scoped to `backend/workspace/`, and merges
   its tools with the sales server's through `app/mcp_client/registry.py`, which routes each tool
   call to the server that owns it. Ask the bot to save or read a note and it will use it.
+- **Official Git MCP server**: `backend/app/main.py` also launches `mcp-server-git` (via `uvx`)
+  against a demo repository at `backend/workspace/demo-repo/` (created automatically on first
+  run, since that server has no `git_init` tool). Ask the bot to write a README and commit it, and
+  it will use the filesystem tools to write the file and the git tools (`git_add`, `git_commit`,
+  `git_log`, ...) to commit it for real.
 
-More features (official Git MCP server, remote deployment, Wireshark analysis) will be added
-incrementally as the project progresses — see `docs/progress.md` for the live backlog.
+More features (remote deployment, Wireshark analysis) will be added incrementally as the project
+progresses — see `docs/progress.md` for the live backlog.
 
 ## Requirements
 
 - Python 3.10+
 - Node.js + `npx` (used to run the official Filesystem MCP server)
+- [uv](https://docs.astral.sh/uv/) (`uvx`, used to run the official Git MCP server)
 - [Ollama](https://ollama.com/) installed and running locally, with a model pulled, e.g.:
 
   ```
