@@ -45,11 +45,28 @@ Read this file at the start of every autonomous session and update the Status se
 - [x] Sales server spec doc at `docs/spec/mcp_server_sales.md`: every tool and resource (params,
       JSON Schema, example requests/responses) and the error-handling model (JSON-RPC error vs.
       `isError: true` result), all verified against real server output via `demo_mcp_sales.py`.
+- [x] `python -m app.main --show-log`: reads `backend/logs/interactions.log` (JSON lines) and
+      prints each recorded LLM/MCP request/response. Added `format_log_entry`/`read_log_entries`/
+      `show_log` in `app/main.py`, argparse-wired so `--show-log` prints the log and exits instead
+      of starting the chatbot loop. Unit-tested (`tests/test_show_log.py`, 4 tests) and verified
+      manually against a real generated log file.
+- [x] `mcp_server_sales` HTTP transport scaffold: `core/http_server.py` exposes the exact same
+      `handle_message` JSON-RPC logic (from `core/server.py`) over a single `POST /rpc` endpoint
+      using only `http.server` (no MCP SDK, no web framework). `python -m mcp_server_sales
+      --transport http --port 8765` runs it standalone; stdio stays the default so the chatbot in
+      `app/main.py` is unaffected. Added the matching client-side `app/mcp_client/transports/http.py`
+      (same `send`/`receive`/`close` interface as the stdio transport). This is a scaffold only —
+      no auth, no MCP session headers, no SSE — real cloud hosting is still out of scope (see
+      below). Verified for real over localhost sockets, not mocked: unit tests spin up an actual
+      `ThreadingHTTPServer` on an ephemeral port and drive it both with raw HTTP requests and with
+      a real `MCPClient` doing the full initialize → tools/list → tools/call handshake
+      (`tests/test_mcp_server_sales_http.py`, 4 tests); also smoke-tested manually via `curl`.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-1. Add a way to display the interaction log from the CLI (e.g. `python -m app.main --show-log`).
-2. `mcp_server_sales` remote transport (HTTP) so the same server can run on a cloud host —
-   scaffold only; actual cloud deployment is out of scope here (see below).
+No items queued right now — both items from the previous backlog were completed this session.
+Next planning session should add the next real increment here (e.g. resource/prompt support,
+richer error surfaces, or a first pass at the report write-up) before the following autonomous
+run.
 
 ### Needs verification by the student on their own machine
 - Full live run of `python -m app.main` with a real Ollama server: the sandbox this session ran
@@ -64,20 +81,15 @@ Read this file at the start of every autonomous session and update the Status se
   configured globally on the machine running it — check `git config --global user.name/user.email`
   are set, or `git_commit` calls will fail.
 
-### BLOCKED: could not push this session's commits to origin/main
-This session made 4 real, tested, atomic commits locally (filesystem MCP server, git MCP
-server, sales server spec doc, this progress update — see git log), but **could not push them**:
-both `git push` (403: "Claude doesn't have GitHub access to jlope384/Proyecto-1-redes for your
-organization") and the GitHub API write path (`git/trees` and `contents` endpoints, 403:
-"Resource not accessible by integration") were rejected. Read access works fine; this is a
-write-permission gap on the Claude GitHub App installation for this repo/account, not something
-fixable from inside the sandbox.
-
-**To fix**: reconnect/reinstall the Claude GitHub App with write access — either from
-claude.ai Settings → Connectors (reconnect GitHub), or have an org admin grant it at
-https://github.com/apps/claude/installations/select_target — then re-run this routine (or push
-manually) so these commits land on origin/main. The commits themselves are good; nothing here
-needs to be redone, only pushed.
+### RESOLVED: the previous session's "could not push" block
+An earlier session recorded a block here saying its 4 commits couldn't be pushed (403 on both
+`git push` and the GitHub API write path). By the start of this session, `origin/main` already
+had all of those commits — the push evidently went through after all (or access was fixed) even
+though that session's transcript ended on the failure. Nothing was lost; this note is just
+correcting the record. If `git push` ever rejects again with a 403 naming a GitHub App
+permission gap, the fix is still: reconnect/reinstall the Claude GitHub App with write access
+from claude.ai Settings → Connectors, or have an org admin grant it at
+https://github.com/apps/claude/installations/select_target.
 
 ### Explicitly OUT of scope for the autonomous routine (needs the human)
 - Remote deployment of `mcp_server_sales` to Google Cloud Run / Cloudflare (needs a
