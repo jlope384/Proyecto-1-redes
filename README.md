@@ -31,6 +31,16 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
   it will use the filesystem tools to write the file and the git tools (`git_add`, `git_commit`,
   `git_log`, ...) to commit it for real.
 
+- **HTTP transport scaffold for the sales server**: `mcp_server_sales/core/http_server.py` exposes
+  the same hand-rolled `handle_message` JSON-RPC logic over a single `POST /rpc` HTTP endpoint
+  (stdlib `http.server`, no MCP SDK), so the server can eventually run as a standalone process
+  instead of only as a subprocess launched over stdio. Run it with
+  `python -m mcp_server_sales --transport http --port 8765`. `app/mcp_client/transports/http.py`
+  is the matching client-side transport (same `send`/`receive`/`close` interface as the stdio
+  transport). This is a scaffold, not a deployment: actual cloud hosting is out of scope for now
+  (see `docs/progress.md`), and the chatbot in `app/main.py` still uses stdio for all three
+  servers.
+
 More features (remote deployment, Wireshark analysis) will be added incrementally as the project
 progresses — see `docs/progress.md` for the live backlog.
 
@@ -71,6 +81,14 @@ python -m app.main
 
 Type your messages at the `You:` prompt; type `exit` to quit. Try asking about products, e.g.
 "Tienen camisas azules y cuanto cuestan?" — the model will call the sales MCP server for real data.
+
+To review everything logged during a session (every LLM and MCP request/response, from
+`backend/logs/interactions.log`):
+
+```bash
+cd backend
+python -m app.main --show-log
+```
 
 To see the raw MCP protocol exchange (initialize, tools/list, tools/call, resources/read) without
 the LLM in the loop:
