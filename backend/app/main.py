@@ -1,19 +1,22 @@
 """Interactive command-line chatbot host: connects to Ollama, keeps session context, and
 lets the LLM call tools exposed by multiple MCP servers (JSON-RPC over stdio).
 """
+import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 from app.chat.session import ChatSession
 from app.llm.ollama_client import OllamaClient, OllamaConnectionError
-from app.logging.interaction_logger import build_interaction_logger, log_interaction
+from app.logging.interaction_logger import DEFAULT_LOG_DIR, build_interaction_logger, log_interaction
 from app.mcp_client.client import MCPClient
 from app.mcp_client.registry import ToolRegistry
 from app.mcp_client.transports.stdio import StdioTransport
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
 GIT_REPO_DIR = WORKSPACE_DIR / "demo-repo"
+DEFAULT_LOG_PATH = Path(DEFAULT_LOG_DIR) / "interactions.log"
 
 SYSTEM_PROMPT = (
     "You are a helpful sales assistant for a clothing store. Use the available tools "
@@ -72,6 +75,41 @@ def handle_tool_calls(registry, tool_calls, session, logger):
         log_interaction(logger, tag, "response", result)
         text = result["content"][0]["text"]
         session.add_tool_result(name, text)
+
+
+def format_log_entry(entry):
+    source = entry.get("source", "?")
+    direction = entry.get("direction", "?")
+    payload = json.dumps(entry.get("payload"), ensure_ascii=False)
+    return f"[{source}] {direction}: {payload}"
+
+
+def read_log_entries(log_path):
+    """Yield parsed JSON entries from a JSON-lines interaction log, skipping blank lines."""
+    with open(log_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def show_log(log_path=None, out=sys.stdout):
+    log_path = Path(log_path) if log_path else DEFAULT_LOG_PATH
+    if not log_path.is_file():
+        print(f"No interaction log found at {log_path}.", file=out)
+        return
+    for entry in read_log_entries(log_path):
+        print(format_log_entry(entry), file=out)
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="MCP chatbot host")
+    parser.add_argument(
+        "--show-log",
+        action="store_true",
+        help="Print the recorded LLM/MCP interaction log and exit, instead of starting the chatbot.",
+    )
+    return parser.parse_args(argv)
 
 
 def run():
@@ -136,4 +174,8 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    args = parse_args()
+    if args.show_log:
+        show_log()
+    else:
+        run()
