@@ -23,7 +23,7 @@ Request:
 Response:
 
 ```json
-{"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-11-25", "capabilities": {"tools": {}, "resources": {}}, "serverInfo": {"name": "mcp-server-sales", "version": "0.1.0"}}}
+{"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-11-25", "capabilities": {"tools": {}, "resources": {}, "prompts": {}}, "serverInfo": {"name": "mcp-server-sales", "version": "0.1.0"}}}
 ```
 
 The client then sends the `notifications/initialized` notification (no `id`, no response
@@ -35,7 +35,10 @@ expected) to complete the handshake.
 takes `{"name": <tool>, "arguments": {...}}` and always returns
 `{"content": [{"type": "text", "text": <json-encoded result>}], "isError": <bool>}` — on failure
 (unknown SKU/order/etc.) `isError` is `true` and `text` is a human-readable Spanish error message
-instead of JSON, sourced from a `ValueError` raised by the tool.
+instead of JSON, sourced from a `ValueError` raised by the tool. A call missing one of the
+tool's required `inputSchema` arguments, or passing one with the wrong type, is also returned as
+an `isError: true` result (never an uncaught exception that would crash the server process) —
+see `core/server.py:_tool_call_result`.
 
 ### `buscar_productos`
 
@@ -134,6 +137,35 @@ Errors (`isError: true`): `"SKU desconocido: <sku>"` if the SKU doesn't exist, o
 `"Stock insuficiente para <sku> talla <talla>: hay <stock>, se pidieron <cantidad>"` if the
 requested quantity exceeds stock for that size.
 
+## Prompts (`prompts/list`, `prompts/get`)
+
+Reusable, parameterized chat-turn templates (`backend/mcp_server_sales/prompts/sales_prompts.py`)
+— distinct from tools and resources. `prompts/get` takes `{"name": <prompt>, "arguments": {...}}`
+and returns `{"description": <str>, "messages": [{"role": <str>, "content": {"type": "text",
+"text": <str>}}]}`.
+
+| prompt | arguments | purpose |
+|---|---|---|
+| `recomendar_outfit` | `ocasion` (string, required), `presupuesto` (string, optional) | asks the assistant to build a full outfit for an occasion using `buscar_productos`/`recomendar_complementos` |
+| `resumen_pedido` | `pedido_id` (string, required) | asks the assistant to look up an order with `consultar_pedido` and summarize it for the customer |
+
+Request/response for `resumen_pedido`:
+
+```json
+{"jsonrpc": "2.0", "id": 5, "method": "prompts/get", "params": {"name": "resumen_pedido", "arguments": {"pedido_id": "PED-1001"}}}
+```
+
+```json
+{"jsonrpc": "2.0", "id": 5, "result": {"description": "Eres un agente de servicio al cliente.", "messages": [{"role": "user", "content": {"type": "text", "text": "Consulta el pedido PED-1001 con consultar_pedido y resume su estado, articulos y total en un tono breve y amigable para el cliente."}}]}}
+```
+
+An unknown prompt name, or a call missing a required argument, returns a JSON-RPC error
+`{"code": -32602, ...}` (unlike tool errors, which are ordinary results with `isError: true`,
+since there's no partial/business result to hand back for a malformed prompt request).
+
+From the chatbot CLI (`app/main.py`), typing `/prompt resumen_pedido pedido_id=PED-1001` fetches
+this prompt from the sales server and starts the turn from its text instead of free-typed input.
+
 ## Resources (`resources/list`, `resources/read`)
 
 Static store policies, one resource per policy, `text/plain`.
@@ -166,7 +198,9 @@ Reading an unknown `uri` returns a JSON-RPC error `{"code": -32602, "message": "
 |---|---|
 | unknown JSON-RPC method | error response, code `-32601` |
 | `tools/call` with unknown tool name | error response, code `-32602` |
+| `tools/call` missing a required argument, or with a wrongly-typed one | **not** a JSON-RPC error — a normal `tools/call` result with `isError: true` |
 | `resources/read` with unknown `uri` | error response, code `-32602` |
+| `prompts/get` with unknown prompt name or missing required argument | error response, code `-32602` |
 | known tool called with invalid business input (bad SKU, insufficient stock, ...) | **not** a JSON-RPC error — a normal `tools/call` result with `isError: true` and a Spanish message in `content[0].text`, so the LLM can read and relay it to the user |
 
 ## Try it yourself
