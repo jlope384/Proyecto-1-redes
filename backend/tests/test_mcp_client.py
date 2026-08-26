@@ -71,6 +71,28 @@ def test_get_prompt_sends_name_and_arguments():
     }
 
 
+def test_call_skips_server_notifications_before_the_matching_response():
+    transport = FakeTransport(
+        [
+            {"jsonrpc": "2.0", "method": "notifications/progress", "params": {"pct": 50}},
+            {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "ok"}]}},
+        ]
+    )
+    client = MCPClient(transport, server_name="sales")
+
+    result = client.call_tool("buscar_productos", {"query": "camisa"})
+
+    assert result["content"][0]["text"] == "ok"
+
+
+def test_call_raises_on_mismatched_response_id():
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 99, "result": {}}])
+    client = MCPClient(transport, server_name="sales")
+
+    with pytest.raises(MCPProtocolError):
+        client.list_tools()
+
+
 def test_error_response_raises_mcp_protocol_error():
     transport = FakeTransport(
         [{"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "Method not found"}}]

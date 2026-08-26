@@ -1,6 +1,7 @@
 """MCP client: drives the initialize handshake and exposes tools/resources over any transport."""
 from app.mcp_client.protocol import (
     MCP_PROTOCOL_VERSION,
+    MCPProtocolError,
     build_notification,
     build_request,
     parse_response,
@@ -21,8 +22,19 @@ class MCPClient:
         request_id = self._next_id
         self._next_id += 1
         self.transport.send(build_request(request_id, method, params))
-        response = self.transport.receive()
-        return parse_response(response)
+        while True:
+            response = self.transport.receive()
+            if "id" not in response:
+                # Server-initiated notification (e.g. notifications/progress, logging) sent
+                # unprompted between our request and its response - not a reply to us.
+                continue
+            if response["id"] != request_id:
+                raise MCPProtocolError(
+                    None,
+                    f"Received response id {response['id']!r} for method {method!r}, "
+                    f"expected {request_id!r}",
+                )
+            return parse_response(response)
 
     def initialize(self):
         result = self._call(
