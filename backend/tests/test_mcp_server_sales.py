@@ -66,6 +66,53 @@ def test_tools_call_unknown_sku_returns_tool_error_not_protocol_error():
     assert "NOPE" in result["content"][0]["text"]
 
 
+def test_tools_call_missing_required_argument_returns_tool_error_not_crash():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 41,
+            "method": "tools/call",
+            "params": {"name": "consultar_inventario", "arguments": {}},
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "sku" in result["content"][0]["text"]
+
+
+def test_tools_call_missing_one_of_several_required_arguments():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 42,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                "arguments": {"sku": "CAM-001", "talla": "M"},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "cantidad" in result["content"][0]["text"]
+
+
+def test_tools_call_wrong_argument_type_returns_tool_error_not_crash():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 43,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                "arguments": {"sku": "CAM-001", "talla": "M", "cantidad": "dos"},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+
+
 def test_unknown_method_returns_json_rpc_error():
     response = handle_message({"jsonrpc": "2.0", "id": 5, "method": "not/a/method"})
     assert response["error"]["code"] == -32601

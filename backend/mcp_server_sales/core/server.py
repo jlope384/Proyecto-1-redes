@@ -13,14 +13,31 @@ SERVER_NAME = "mcp-server-sales"
 SERVER_VERSION = "0.1.0"
 PROTOCOL_VERSION = "2025-11-25"
 
+TOOL_SPECS_BY_NAME = {spec["name"]: spec for spec in TOOL_SPECS}
+
+
+def _missing_required_arguments(name, arguments):
+    required = TOOL_SPECS_BY_NAME[name]["inputSchema"].get("required", [])
+    return [field for field in required if field not in arguments]
+
 
 def _tool_call_result(name, arguments):
+    missing = _missing_required_arguments(name, arguments)
+    if missing:
+        text = f"Faltan argumentos requeridos para {name}: {', '.join(missing)}"
+        return {"content": [{"type": "text", "text": text}], "isError": True}
+
     handler = DISPATCH[name]
     try:
         value = handler(arguments)
         return {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}], "isError": False}
     except ValueError as exc:
         return {"content": [{"type": "text", "text": str(exc)}], "isError": True}
+    except (TypeError, KeyError) as exc:
+        # Defensive net for malformed arguments a schema check above didn't catch
+        # (e.g. wrong type for a present field) - never let a bad tool call from
+        # the LLM crash the whole server subprocess.
+        return {"content": [{"type": "text", "text": f"Argumentos invalidos para {name}: {exc}"}], "isError": True}
 
 
 def handle_message(message):
