@@ -44,6 +44,33 @@ def test_call_tool_returns_result():
     assert transport.sent[0]["params"]["name"] == "buscar_productos"
 
 
+def test_list_prompts_returns_prompts():
+    transport = FakeTransport(
+        [{"jsonrpc": "2.0", "id": 1, "result": {"prompts": [{"name": "resumen_pedido"}]}}]
+    )
+    client = MCPClient(transport, server_name="sales")
+
+    prompts = client.list_prompts()
+
+    assert prompts == [{"name": "resumen_pedido"}]
+    assert transport.sent[0]["method"] == "prompts/list"
+
+
+def test_get_prompt_sends_name_and_arguments():
+    transport = FakeTransport(
+        [{"jsonrpc": "2.0", "id": 1, "result": {"description": "d", "messages": []}}]
+    )
+    client = MCPClient(transport, server_name="sales")
+
+    result = client.get_prompt("resumen_pedido", {"pedido_id": "PED-1001"})
+
+    assert result == {"description": "d", "messages": []}
+    assert transport.sent[0]["params"] == {
+        "name": "resumen_pedido",
+        "arguments": {"pedido_id": "PED-1001"},
+    }
+
+
 def test_error_response_raises_mcp_protocol_error():
     transport = FakeTransport(
         [{"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "Method not found"}}]

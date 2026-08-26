@@ -53,5 +53,12 @@ class MCPClient:
         result = self._call("resources/read", {"uri": uri})
         return result["contents"]
 
+    def list_prompts(self):
+        result = self._call("prompts/list")
+        return result["prompts"]
+
+    def get_prompt(self, name, arguments=None):
+        return self._call("prompts/get", {"name": name, "arguments": arguments or {}})
+
     def close(self):
         self.transport.close()

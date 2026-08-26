@@ -118,6 +118,54 @@ def test_unknown_method_returns_json_rpc_error():
     assert response["error"]["code"] == -32601
 
 
+def test_initialize_advertises_prompts_capability():
+    response = handle_message({"jsonrpc": "2.0", "id": 7, "method": "initialize", "params": {}})
+    assert "prompts" in response["result"]["capabilities"]
+
+
+def test_prompts_list_includes_both_prompts():
+    response = handle_message({"jsonrpc": "2.0", "id": 8, "method": "prompts/list"})
+    names = {p["name"] for p in response["result"]["prompts"]}
+    assert names == {"recomendar_outfit", "resumen_pedido"}
+
+
+def test_prompts_get_resumen_pedido_fills_argument():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "prompts/get",
+            "params": {"name": "resumen_pedido", "arguments": {"pedido_id": "PED-1001"}},
+        }
+    )
+    result = response["result"]
+    assert "PED-1001" in result["messages"][0]["content"]["text"]
+
+
+def test_prompts_get_missing_required_argument_returns_json_rpc_error():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "prompts/get",
+            "params": {"name": "resumen_pedido", "arguments": {}},
+        }
+    )
+    assert response["error"]["code"] == -32602
+
+
+def test_prompts_get_unknown_prompt_returns_json_rpc_error():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "prompts/get",
+            "params": {"name": "no_existe", "arguments": {}},
+        }
+    )
+    assert response["error"]["code"] == -32602
+
+
 def test_resources_read_policy():
     response = handle_message(
         {"jsonrpc": "2.0", "id": 6, "method": "resources/read", "params": {"uri": "policy://envio"}}

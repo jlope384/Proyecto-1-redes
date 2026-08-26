@@ -6,6 +6,7 @@ https://modelcontextprotocol.io/specification/2025-11-25
 import json
 import sys
 
+from mcp_server_sales.prompts import sales_prompts
 from mcp_server_sales.resources import policies
 from mcp_server_sales.tools.sales_tools import DISPATCH, TOOL_SPECS
 
@@ -51,7 +52,7 @@ def handle_message(message):
     if method == "initialize":
         result = {
             "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": {"tools": {}, "resources": {}},
+            "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
             "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
         }
     elif method == "tools/list":
@@ -68,6 +69,14 @@ def handle_message(message):
         uri = message.get("params", {}).get("uri")
         try:
             result = {"contents": policies.read_resource(uri)}
+        except ValueError as exc:
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": str(exc)}}
+    elif method == "prompts/list":
+        result = {"prompts": sales_prompts.list_prompts()}
+    elif method == "prompts/get":
+        params = message.get("params", {})
+        try:
+            result = sales_prompts.get_prompt(params.get("name"), params.get("arguments", {}))
         except ValueError as exc:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": str(exc)}}
     else:

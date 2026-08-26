@@ -64,6 +64,29 @@ def connect_git_mcp_server(logger, repo_path):
     return client
 
 
+def parse_prompt_command(text):
+    """Parse a `/prompt <name> [key=value ...]` line into (name, arguments), or None if `text`
+    isn't a prompt command."""
+    if not text.startswith("/prompt"):
+        return None
+    parts = text.split()[1:]
+    if not parts:
+        return None
+    name, pairs = parts[0], parts[1:]
+    arguments = {}
+    for pair in pairs:
+        if "=" not in pair:
+            continue
+        key, value = pair.split("=", 1)
+        arguments[key] = value
+    return name, arguments
+
+
+def prompt_text(prompt_result):
+    """Flatten an MCP `prompts/get` result's messages into a single string to feed the LLM."""
+    return "\n".join(m["content"]["text"] for m in prompt_result["messages"])
+
+
 def handle_tool_calls(registry, tool_calls, session, logger):
     for call in tool_calls:
         name = call["function"]["name"]
@@ -133,7 +156,9 @@ def run():
 
     print(
         f"Connected to Ollama model '{llm_client.model}', mcp-server-sales, the filesystem MCP "
-        "server and the git MCP server. Type 'exit' to quit."
+        "server and the git MCP server. Type 'exit' to quit, or '/prompt <name> key=value ...' "
+        "to start a turn from one of mcp-server-sales's prompt templates "
+        "(recomendar_outfit, resumen_pedido)."
     )
     try:
         while True:
@@ -142,6 +167,17 @@ def run():
                 break
             if not user_input:
                 continue
+
+            prompt_command = parse_prompt_command(user_input)
+            if prompt_command is not None:
+                name, arguments = prompt_command
+                try:
+                    result = sales_client.get_prompt(name, arguments)
+                except Exception as exc:  # MCPProtocolError or bad prompt name/arguments
+                    print(f"[error] {exc}")
+                    continue
+                user_input = prompt_text(result)
+                print(f"[prompt:{name}] {user_input}")
 
             session.add_user_message(user_input)
             log_interaction(logger, "llm", "request", session.history())
