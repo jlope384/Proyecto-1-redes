@@ -62,11 +62,45 @@ Read this file at the start of every autonomous session and update the Status se
       a real `MCPClient` doing the full initialize → tools/list → tools/call handshake
       (`tests/test_mcp_server_sales_http.py`, 4 tests); also smoke-tested manually via `curl`.
 
+- [x] MCP prompts support in the sales server: hand-rolled `prompts/list`/`prompts/get`
+      (`mcp_server_sales/prompts/sales_prompts.py`), two templates (`recomendar_outfit`,
+      `resumen_pedido`), advertised via `capabilities.prompts` on `initialize`. Client side:
+      `MCPClient.list_prompts`/`get_prompt`. Wired into the chatbot CLI as a
+      `/prompt <name> key=value ...` command (`app/main.py:parse_prompt_command`/`prompt_text`)
+      that fetches a prompt and starts the turn from it instead of free-typed input. Unit-tested
+      server and client sides, plus the CLI parsing helpers, and verified for real against the
+      actual server subprocess (not mocked).
+- [x] Fixed a real crash bug: `tools/call` with a missing required argument (or one of the
+      wrong type) raised an uncaught `KeyError`/`TypeError` that would have killed the whole
+      `mcp-server-sales` subprocess mid-session instead of returning a normal tool error. Now
+      validated against each tool's `inputSchema` before dispatch, with a defensive
+      `except (TypeError, KeyError)` net around the handler call itself. Unit-tested with three
+      new cases (missing single arg, missing one of several, wrong type).
+- [x] `MCPClient._call` no longer assumes the next stdout line is always the reply to its own
+      request: it now skips server-initiated notifications (no `id`, e.g.
+      `notifications/progress`) and raises `MCPProtocolError` on a mismatched response `id`,
+      instead of silently misreading either as the response. This matters for the official
+      filesystem/git servers, which are free to emit notifications mid-conversation. Unit-tested
+      with a fake transport that interleaves a notification before the real response, and with a
+      deliberately mismatched id.
+- [x] `docs/spec/mcp_server_sales.md` updated to document the new prompts capability and the
+      argument-validation error behavior, keeping the spec in sync with the server it describes.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-No items queued right now — both items from the previous backlog were completed this session.
-Next planning session should add the next real increment here (e.g. resource/prompt support,
-richer error surfaces, or a first pass at the report write-up) before the following autonomous
-run.
+- [ ] Harden `app/main.py`'s interactive loop: `handle_tool_calls` calls `client.call_tool(...)`
+      with no error handling, so a transport failure (a connected MCP server subprocess dying,
+      e.g. `ConnectionError` from `StdioTransport.receive`) or an `MCPProtocolError` currently
+      crashes the whole chatbot session instead of reporting the failure and continuing. The
+      `--show-log`/Ollama-connection path already handles this correctly (see the
+      `OllamaConnectionError` handling in `run()`) — do the same for tool calls: catch, log,
+      print an `[error]` line, feed a tool-error message back into the session so the LLM can
+      react, and keep the loop alive.
+- [ ] Consider generalizing `ToolRegistry` (currently tools-only) to also route `prompts/list`
+      across multiple servers with prompts, once a second server exposes any — not needed yet
+      since only `mcp-server-sales` has prompts right now, but the single-server assumption in
+      `app/main.py`'s `/prompt` command (hardcoded to `sales_client`) will need revisiting then.
+- [ ] Next real increment beyond that: richer resource content types (today every resource is
+      `text/plain`), or a first pass at the report write-up (`docs/report/` is still empty).
 
 ### Needs verification by the student on their own machine
 - Full live run of `python -m app.main` with a real Ollama server: the sandbox this session ran
@@ -80,6 +114,12 @@ run.
 - The git demo repo (`backend/workspace/demo-repo/`) commits using whatever `git` identity is
   configured globally on the machine running it — check `git config --global user.name/user.email`
   are set, or `git_commit` calls will fail.
+- The new `/prompt <name> key=value ...` chatbot command was verified for real against the
+  `mcp-server-sales` subprocess directly (`prompts/list`/`prompts/get` over real stdio), but not
+  through the actual interactive `python -m app.main` loop with a live Ollama model, for the same
+  sandbox reason as above. Please try `/prompt resumen_pedido pedido_id=PED-1001` and
+  `/prompt recomendar_outfit ocasion=boda presupuesto=500` once locally and confirm the model
+  picks up the injected prompt text and calls the right tools in response.
 
 ### RESOLVED: the previous session's "could not push" block
 An earlier session recorded a block here saying its 4 commits couldn't be pushed (403 on both
