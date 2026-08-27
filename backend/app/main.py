@@ -11,6 +11,7 @@ from app.chat.session import ChatSession
 from app.llm.ollama_client import OllamaClient, OllamaConnectionError
 from app.logging.interaction_logger import DEFAULT_LOG_DIR, build_interaction_logger, log_interaction
 from app.mcp_client.client import MCPClient
+from app.mcp_client.protocol import MCPProtocolError
 from app.mcp_client.registry import ToolRegistry
 from app.mcp_client.transports.stdio import StdioTransport
 
@@ -94,7 +95,13 @@ def handle_tool_calls(registry, tool_calls, session, logger):
         client = registry.client_for(name)
         tag = f"mcp:{client.server_name}"
         log_interaction(logger, tag, "request", {"method": "tools/call", "name": name, "arguments": arguments})
-        result = client.call_tool(name, arguments)
+        try:
+            result = client.call_tool(name, arguments)
+        except (MCPProtocolError, ConnectionError) as exc:
+            log_interaction(logger, tag, "error", {"name": name, "error": str(exc)})
+            print(f"[error] Tool call '{name}' failed: {exc}")
+            session.add_tool_result(name, f"Error calling tool '{name}': {exc}")
+            continue
         log_interaction(logger, tag, "response", result)
         text = result["content"][0]["text"]
         session.add_tool_result(name, text)
