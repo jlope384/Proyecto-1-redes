@@ -33,6 +33,8 @@ def run():
     print("resources/list ->", resources)
     print()
     print("resources/read policy://envio ->", client.read_resource("policy://envio"))
+    print()
+    print("resources/read catalog://productos ->", client.read_resource("catalog://productos"))
 
     client.close()
 

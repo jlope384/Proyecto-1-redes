@@ -168,7 +168,16 @@ this prompt from the sales server and starts the turn from its text instead of f
 
 ## Resources (`resources/list`, `resources/read`)
 
-Static store policies, one resource per policy, `text/plain`.
+Two kinds of resource, served from two modules (`resources/policies.py`,
+`resources/catalog_resource.py`) that `core/server.py` aggregates: `resources/list`
+concatenates every module's list, and `resources/read` tries each module in turn until
+one recognizes the `uri`.
+
+- Store policies, one resource per policy, `text/plain` — free-form prose for a human or
+  an LLM to read as-is.
+- The full product catalog, a single resource, `application/json` — a JSON-encoded array
+  a client can parse instead of just displaying, demonstrating that resource content isn't
+  limited to plain text.
 
 `resources/list` response:
 
@@ -176,7 +185,8 @@ Static store policies, one resource per policy, `text/plain`.
 [
   {"uri": "policy://envio", "name": "Politica de envio", "mimeType": "text/plain"},
   {"uri": "policy://garantia", "name": "Politica de garantia", "mimeType": "text/plain"},
-  {"uri": "policy://devoluciones", "name": "Politica de devoluciones", "mimeType": "text/plain"}
+  {"uri": "policy://devoluciones", "name": "Politica de devoluciones", "mimeType": "text/plain"},
+  {"uri": "catalog://productos", "name": "Catalogo completo de productos", "mimeType": "application/json"}
 ]
 ```
 
@@ -188,6 +198,18 @@ Static store policies, one resource per policy, `text/plain`.
 
 ```json
 {"jsonrpc": "2.0", "id": 4, "result": {"contents": [{"uri": "policy://envio", "mimeType": "text/plain", "text": "Envios en 2-5 dias habiles a nivel nacional. Envio gratis en compras mayores a Q500."}]}}
+```
+
+`resources/read` request/response for `catalog://productos` (the JSON is the `text` field's
+value, `json.dumps`-encoded — MCP resource contents are always transmitted as a string,
+whether they hold prose or serialized structured data):
+
+```json
+{"jsonrpc": "2.0", "id": 5, "method": "resources/read", "params": {"uri": "catalog://productos"}}
+```
+
+```json
+{"jsonrpc": "2.0", "id": 5, "result": {"contents": [{"uri": "catalog://productos", "mimeType": "application/json", "text": "[{\"sku\": \"CAM-001\", \"nombre\": \"Camisa de vestir azul\", \"precio\": 249.0, \"descripcion\": \"Camisa de vestir de algodon, corte slim.\"}, ...]"}]}}
 ```
 
 Reading an unknown `uri` returns a JSON-RPC error `{"code": -32602, "message": "Recurso desconocido: <uri>"}`.

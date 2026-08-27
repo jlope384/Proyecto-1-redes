@@ -171,3 +171,26 @@ def test_resources_read_policy():
         {"jsonrpc": "2.0", "id": 6, "method": "resources/read", "params": {"uri": "policy://envio"}}
     )
     assert "Envios" in response["result"]["contents"][0]["text"]
+
+
+def test_resources_list_includes_the_json_catalog_resource():
+    response = handle_message({"jsonrpc": "2.0", "id": 12, "method": "resources/list"})
+    resources_by_uri = {r["uri"]: r for r in response["result"]["resources"]}
+    assert resources_by_uri["catalog://productos"]["mimeType"] == "application/json"
+
+
+def test_resources_read_catalog_returns_parseable_json_matching_products():
+    response = handle_message(
+        {"jsonrpc": "2.0", "id": 13, "method": "resources/read", "params": {"uri": "catalog://productos"}}
+    )
+    content = response["result"]["contents"][0]
+    assert content["mimeType"] == "application/json"
+    products = json.loads(content["text"])
+    assert {p["sku"] for p in products} == {"CAM-001", "PAN-002", "COR-003", "CIN-004"}
+
+
+def test_resources_read_unknown_uri_returns_json_rpc_error():
+    response = handle_message(
+        {"jsonrpc": "2.0", "id": 14, "method": "resources/read", "params": {"uri": "policy://no-existe"}}
+    )
+    assert response["error"]["code"] == -32602

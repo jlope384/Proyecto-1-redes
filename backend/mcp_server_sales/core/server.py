@@ -7,7 +7,7 @@ import json
 import sys
 
 from mcp_server_sales.prompts import sales_prompts
-from mcp_server_sales.resources import policies
+from mcp_server_sales.resources import catalog_resource, policies
 from mcp_server_sales.tools.sales_tools import DISPATCH, TOOL_SPECS
 
 SERVER_NAME = "mcp-server-sales"
@@ -15,6 +15,26 @@ SERVER_VERSION = "0.1.0"
 PROTOCOL_VERSION = "2025-11-25"
 
 TOOL_SPECS_BY_NAME = {spec["name"]: spec for spec in TOOL_SPECS}
+
+# Each module exposes list_resources()/read_resource(uri); read_resource raises ValueError
+# for a uri it doesn't own, so we can just try each in turn.
+RESOURCE_MODULES = [policies, catalog_resource]
+
+
+def _list_all_resources():
+    resources = []
+    for module in RESOURCE_MODULES:
+        resources.extend(module.list_resources())
+    return resources
+
+
+def _read_any_resource(uri):
+    for module in RESOURCE_MODULES:
+        try:
+            return module.read_resource(uri)
+        except ValueError:
+            continue
+    raise ValueError(f"Recurso desconocido: {uri}")
 
 
 def _missing_required_arguments(name, arguments):
@@ -64,11 +84,11 @@ def handle_message(message):
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": f"Unknown tool: {name}"}}
         result = _tool_call_result(name, params.get("arguments", {}))
     elif method == "resources/list":
-        result = {"resources": policies.list_resources()}
+        result = {"resources": _list_all_resources()}
     elif method == "resources/read":
         uri = message.get("params", {}).get("uri")
         try:
-            result = {"contents": policies.read_resource(uri)}
+            result = {"contents": _read_any_resource(uri)}
         except ValueError as exc:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": str(exc)}}
     elif method == "prompts/list":
