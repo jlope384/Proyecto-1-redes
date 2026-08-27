@@ -17,6 +17,9 @@ class FakeClient:
     def list_tools(self):
         return self._tools
 
+    def list_prompts(self):
+        raise MCPProtocolError(-32601, "Method not found: prompts/list")
+
     def call_tool(self, name, arguments=None):
         self.calls.append((name, arguments))
         if self._error is not None:

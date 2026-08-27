@@ -179,8 +179,9 @@ def run():
             if prompt_command is not None:
                 name, arguments = prompt_command
                 try:
-                    result = sales_client.get_prompt(name, arguments)
-                except Exception as exc:  # MCPProtocolError or bad prompt name/arguments
+                    client = registry.client_for_prompt(name)
+                    result = client.get_prompt(name, arguments)
+                except Exception as exc:  # UnknownPromptError, MCPProtocolError, bad arguments
                     print(f"[error] {exc}")
                     continue
                 user_input = prompt_text(result)
