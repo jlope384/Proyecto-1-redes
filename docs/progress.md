@@ -85,22 +85,42 @@ Read this file at the start of every autonomous session and update the Status se
       deliberately mismatched id.
 - [x] `docs/spec/mcp_server_sales.md` updated to document the new prompts capability and the
       argument-validation error behavior, keeping the spec in sync with the server it describes.
+- [x] Hardened `app/main.py`'s interactive loop: `handle_tool_calls` now catches
+      `MCPProtocolError`/`ConnectionError` around `client.call_tool(...)` instead of letting
+      either crash the whole session. It logs an `"error"` interaction entry, prints an
+      `[error]` line, and feeds a tool-error message back into the chat session (as a normal
+      `role: tool` message) so the LLM can react and the loop keeps running. Unit-tested
+      (`tests/test_handle_tool_calls.py`) with a fake client raising both exception types,
+      including a case with two tool calls in one turn where the first fails and the second
+      still runs.
+- [x] Added a JSON resource to the sales server: `catalog://productos` (`application/json`,
+      full product catalog), alongside the existing `text/plain` policy resources. `core/server.py`
+      now aggregates `resources/list`/`resources/read` across a list of resource modules
+      (`resources/policies.py`, the new `resources/catalog_resource.py`) instead of hardcoding
+      the policies module, so adding another resource module later is a one-line change.
+      Unit-tested and verified for real via `demo_mcp_sales.py` against the actual server
+      subprocess; documented in `docs/spec/mcp_server_sales.md`.
+- [x] Generalized `ToolRegistry` to also route MCP prompts, not just tools, across multiple
+      connected servers: `register()` now calls `client.list_prompts()` and records which
+      client owns each prompt name, treating a server that doesn't implement `prompts/list`
+      (an `MCPProtocolError` "Method not found") as simply having no prompts rather than a
+      failure. `app/main.py`'s `/prompt` command now resolves the owning client via
+      `registry.client_for_prompt(name)` instead of a hardcoded reference to `sales_client`.
+      Unit-tested, and verified for real against both the sales server subprocess (prompt
+      routes correctly, `get_prompt` returns real content) and the official filesystem MCP
+      server subprocess (registration doesn't crash on its missing prompts support).
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-- [ ] Harden `app/main.py`'s interactive loop: `handle_tool_calls` calls `client.call_tool(...)`
-      with no error handling, so a transport failure (a connected MCP server subprocess dying,
-      e.g. `ConnectionError` from `StdioTransport.receive`) or an `MCPProtocolError` currently
-      crashes the whole chatbot session instead of reporting the failure and continuing. The
-      `--show-log`/Ollama-connection path already handles this correctly (see the
-      `OllamaConnectionError` handling in `run()`) — do the same for tool calls: catch, log,
-      print an `[error]` line, feed a tool-error message back into the session so the LLM can
-      react, and keep the loop alive.
-- [ ] Consider generalizing `ToolRegistry` (currently tools-only) to also route `prompts/list`
-      across multiple servers with prompts, once a second server exposes any — not needed yet
-      since only `mcp-server-sales` has prompts right now, but the single-server assumption in
-      `app/main.py`'s `/prompt` command (hardcoded to `sales_client`) will need revisiting then.
-- [ ] Next real increment beyond that: richer resource content types (today every resource is
-      `text/plain`), or a first pass at the report write-up (`docs/report/` is still empty).
+- [ ] Next real increment: a first pass at the report write-up (`docs/report/` is still empty).
+      Sections 8 (spec of the MCP servers built — already covered by
+      `docs/spec/mcp_server_sales.md` and the README, just needs pulling together) and the
+      general MCP background/architecture explanation can be written now. Sections 9
+      (link/network/transport-layer analysis from a Wireshark capture) and the parts of section
+      6 that depend on the remote-deployed server (see below) cannot — they need the student's
+      own machine and a completed cloud deployment first.
+- [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
+      only if a real use case for one shows up in the sales server's scope — no forced work here
+      just to demonstrate the shape.
 
 ### Needs verification by the student on their own machine
 - Full live run of `python -m app.main` with a real Ollama server: the sandbox this session ran
@@ -114,12 +134,29 @@ Read this file at the start of every autonomous session and update the Status se
 - The git demo repo (`backend/workspace/demo-repo/`) commits using whatever `git` identity is
   configured globally on the machine running it — check `git config --global user.name/user.email`
   are set, or `git_commit` calls will fail.
-- The new `/prompt <name> key=value ...` chatbot command was verified for real against the
-  `mcp-server-sales` subprocess directly (`prompts/list`/`prompts/get` over real stdio), but not
+- The `/prompt <name> key=value ...` chatbot command (now routed through
+  `ToolRegistry.client_for_prompt`, generalized this session) was verified for real against the
+  `mcp-server-sales` subprocess directly (`prompts/list`/`prompts/get` over real stdio) and the
+  registration path was verified against the real official filesystem server subprocess, but not
   through the actual interactive `python -m app.main` loop with a live Ollama model, for the same
   sandbox reason as above. Please try `/prompt resumen_pedido pedido_id=PED-1001` and
   `/prompt recomendar_outfit ocasion=boda presupuesto=500` once locally and confirm the model
   picks up the injected prompt text and calls the right tools in response.
+- This session's `handle_tool_calls` error-handling fix (catching `MCPProtocolError`/
+  `ConnectionError` around a tool call) is unit-tested with a fake client, but wasn't exercised
+  through a live run where a real MCP server subprocess actually dies mid-session. If you want to
+  see it for real, start `python -m app.main` and kill one of the MCP server subprocesses (e.g.
+  `pkill -f mcp_server_sales`) mid-conversation, then ask something that needs that server's
+  tool — the chatbot should print an `[error]` line and keep running instead of crashing.
+
+### Note: stale local `main` branch pointer at the start of this session
+This session started with `HEAD` detached at the tip of the previous session's work
+(`e703143`) while the local `main` branch ref was still pointing at an older commit
+(`cdafed7`) — `origin/main` itself was already correctly at `e703143`, so nothing was lost,
+but a local `git log`/`git branch` in that state looked alarming (20 "unpushed" commits that
+were, in fact, already on GitHub). Fixed by resetting local `main` to `origin/main` before
+starting new work. If a future session sees a detached `HEAD` again, fetch `origin/main` and
+compare commit hashes before assuming anything needs re-pushing.
 
 ### RESOLVED: the previous session's "could not push" block
 An earlier session recorded a block here saying its 4 commits couldn't be pushed (403 on both
