@@ -81,3 +81,76 @@ la nube). El desacoplar el framing del transporte de la lógica del protocolo es
 permite que, cuando se complete el despliegue remoto (sección 6 del proyecto, aún
 pendiente — ver `docs/progress.md`), el cliente del chatbot lo consuma con el mismo
 `MCPClient`, solo cambiando qué clase de `transports/` se instancia.
+
+## 8. Especificación de los servidores MCP usados
+
+El chatbot (`backend/app/main.py`) conecta simultáneamente a tres servidores MCP por
+stdio y los agrupa con `ToolRegistry` (`backend/app/mcp_client/registry.py`), que
+resuelve a qué cliente pertenece cada tool/prompt que el LLM decide invocar y rechaza
+nombres de tool duplicados entre servidores.
+
+### 8.1 Servidor propio: `mcp_server_sales`
+
+Caso de uso a nivel de industria: asistente de ventas de una tienda de ropa (búsqueda de
+catálogo, inventario por talla, estado de pedidos, recomendación de complementos y
+generación de enlace de pago). Implementado a mano, sin SDK de MCP, en
+`backend/mcp_server_sales/`.
+
+- **Especificación completa** (parámetros, JSON Schema de cada tool, ejemplos reales de
+  request/response para cada método, modelo de errores): `docs/spec/mcp_server_sales.md`.
+  No se repite aquí para no duplicar y desincronizar dos copias del mismo contrato; ese
+  documento se mantiene actualizado en cada sesión que toca el servidor.
+- **Tools**: `buscar_productos`, `consultar_inventario`, `consultar_pedido`,
+  `recomendar_complementos`, `generar_enlace_de_pago`.
+- **Resources**: tres políticas de texto (`policy://envio`, `policy://garantia`,
+  `policy://devoluciones`) y el catálogo completo como JSON (`catalog://productos`).
+- **Prompts**: `recomendar_outfit`, `resumen_pedido`.
+- **Transportes**: stdio (`python -m mcp_server_sales`, el que usa el chatbot hoy) y un
+  scaffold HTTP (`python -m mcp_server_sales --transport http --port <puerto>`, endpoint
+  único `POST /rpc`) sobre la misma lógica de `core/server.py` — pensado como paso previo
+  al despliegue remoto de la sección 6, todavía sin desplegar.
+- **Cómo probarlo**: `python -m app.demo_mcp_sales` (protocolo completo sin LLM de por
+  medio) y `python -m pytest tests/test_mcp_server_sales.py tests/test_mcp_server_sales_http.py`.
+
+### 8.2 Servidores oficiales de Anthropic (locales, vía subprocess)
+
+No implementados por este proyecto — son los servidores de referencia publicados en
+https://github.com/modelcontextprotocol/servers — pero sí conectados e invocados de
+verdad por el chatbot, para cumplir el punto 4 del enunciado.
+
+**Filesystem MCP server** (`@modelcontextprotocol/server-filesystem`)
+
+- Lanzado por `connect_filesystem_mcp_server` en `app/main.py` como
+  `npx -y @modelcontextprotocol/server-filesystem <workspace>`, con `<workspace>` fijo en
+  `backend/workspace/` — el servidor solo puede leer/escribir dentro de esa carpeta, no
+  en el resto del sistema de archivos del host.
+- Tools relevantes usados en el escenario de demo: `write_file`, `read_text_file`.
+- Requisito local: Node.js (para `npx`); no requiere Ollama para conectarse, solo para
+  que el LLM decida invocarlo.
+
+**Git MCP server** (`mcp-server-git`)
+
+- Lanzado por `connect_git_mcp_server` como `uvx mcp-server-git`, operando sobre
+  `backend/workspace/demo-repo/`. Este servidor no expone un tool `git_init`, así que
+  `ensure_git_repo` (`app/main.py`) corre `git init` por fuera del protocolo MCP la
+  primera vez que se conecta (idempotente en corridas siguientes).
+- Tools relevantes usados en el escenario de demo: `git_add`, `git_commit`, `git_log`.
+- Requisito local: [`uv`](https://docs.astral.sh/uv/) (para `uvx`), y una identidad de
+  git configurada globalmente (`git config --global user.name/user.email`) — sin eso
+  `git_commit` falla.
+
+**Escenario de demo end-to-end (punto 4 del enunciado)**, verificado con los
+subprocesos reales de ambos servidores (no simulados): pedirle al chatbot que escriba un
+README y lo comitee hace que el LLM invoque primero `write_file` (servidor filesystem)
+para crear `backend/workspace/demo-repo/README.md`, y luego `git_add` → `git_commit` →
+`git_log` (servidor git) para agregarlo y confirmar el commit real en el repo de
+demostración.
+
+### 8.3 Nota sobre lo pendiente
+
+La sección 6 (mismo servidor `mcp_server_sales` corriendo de forma remota en un proveedor
+de nube) y la sección 9 (captura y análisis con Wireshark del tráfico contra ese servidor
+remoto) no se pueden completar desde este entorno de desarrollo — ver
+`docs/progress.md`, sección "Explicitly OUT of scope", para el detalle de por qué y qué
+falta. Este documento se actualizará con esas secciones una vez el estudiante las
+resuelva en su propia máquina/cuenta de nube.
