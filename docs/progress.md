@@ -109,18 +109,27 @@ Read this file at the start of every autonomous session and update the Status se
       Unit-tested, and verified for real against both the sales server subprocess (prompt
       routes correctly, `get_prompt` returns real content) and the official filesystem MCP
       server subprocess (registration doesn't crash on its missing prompts support).
+- [x] First pass at the report write-up: `docs/report/informe.md` created with an
+      introductory section on MCP's background (why the protocol exists, the three actors —
+      server/client/host — mapped to this project's actual modules, and the request/
+      notification/response shapes of JSON-RPC as used here) and section 8 (spec of the three
+      MCP servers the chatbot connects to: the hand-rolled `mcp_server_sales`, pointing at the
+      existing `docs/spec/mcp_server_sales.md` instead of duplicating it, plus the official
+      filesystem/git servers' launch commands, scoping, and the tools exercised in the
+      end-to-end demo scenario). Sections 9 and 10 are explicitly left for later — see backlog.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-- [ ] Next real increment: a first pass at the report write-up (`docs/report/` is still empty).
-      Sections 8 (spec of the MCP servers built — already covered by
-      `docs/spec/mcp_server_sales.md` and the README, just needs pulling together) and the
-      general MCP background/architecture explanation can be written now. Sections 9
-      (link/network/transport-layer analysis from a Wireshark capture) and the parts of section
-      6 that depend on the remote-deployed server (see below) cannot — they need the student's
-      own machine and a completed cloud deployment first.
+- [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
+      section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
+      capture against the *remote* deployment (student's own machine/network), and conclusions
+      are premature before the remote deployment and presentation are done. Revisit once the
+      remote deployment (see below) exists.
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
-      just to demonstrate the shape.
+      just to demonstrate the shape. Re-checked this session: the current catalog/order data
+      (`backend/mcp_server_sales/data/catalog.py`) has no images or binary documents, so there's
+      still no genuine fit — nothing implemented, left for a future session if the scope grows
+      (e.g. product photos).
 
 ### Needs verification by the student on their own machine
 - Full live run of `python -m app.main` with a real Ollama server: the sandbox this session ran
