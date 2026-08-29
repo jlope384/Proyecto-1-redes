@@ -109,6 +109,28 @@ Read this file at the start of every autonomous session and update the Status se
       Unit-tested, and verified for real against both the sales server subprocess (prompt
       routes correctly, `get_prompt` returns real content) and the official filesystem MCP
       server subprocess (registration doesn't crash on its missing prompts support).
+- [x] Fixed a second real crash bug, found via a code-review pass (see note below): the LLM
+      calling a tool name no connected server exposes (a hallucination, or a typo it made up)
+      raised a raw `KeyError` from `ToolRegistry.client_for` that `handle_tool_calls` did not
+      catch, killing the whole chatbot session. Added `UnknownToolError` in
+      `app/mcp_client/registry.py`, handled in `handle_tool_calls` the same way as the existing
+      `MCPProtocolError`/`ConnectionError` cases. Unit-tested
+      (`tests/test_handle_tool_calls.py`).
+- [x] The chatbot now supports chaining multiple tool calls within a single user turn (e.g.
+      "search for a product, then check its stock"), instead of only one round: the follow-up
+      call after a tool result previously omitted the `tools` list entirely, so the model could
+      not request a second tool even when it needed to. Extracted `run_turn()` in `app/main.py`,
+      which loops (offering tools every round) until the LLM answers with plain text or
+      `MAX_TOOL_ROUNDS` (5) is reached; also fixed a related gap where an Ollama connection
+      failure on a follow-up round would have propagated uncaught instead of being reported like
+      a first-round failure. Unit-tested with a mocked LLM client
+      (`tests/test_run_turn.py`): plain reply, two chained tool-call rounds, hitting the round
+      cap, and connection failures on both the first and a later round.
+- [x] Filled real gaps in `README.md` found in the same review pass: it only showed
+      Windows-style venv activation and env-var syntax (no Linux/macOS equivalent), and never
+      documented the `/prompt <name> key=value ...` command or the git-identity requirement for
+      the git MCP demo (previously only noted in this file). Added all three, plus a usage
+      example for the new chained-tool-calls behavior.
 - [x] First pass at the report write-up: `docs/report/informe.md` created with an
       introductory section on MCP's background (why the protocol exists, the three actors —
       server/client/host — mapped to this project's actual modules, and the request/
@@ -117,6 +139,20 @@ Read this file at the start of every autonomous session and update the Status se
       existing `docs/spec/mcp_server_sales.md` instead of duplicating it, plus the official
       filesystem/git servers' launch commands, scoping, and the tools exercised in the
       end-to-end demo scenario). Sections 9 and 10 are explicitly left for later — see backlog.
+
+### Note on this session's source of work
+Both items already in the backlog below were still blocked on things this sandbox genuinely
+doesn't have (a live Wireshark capture against a *remote* deployment, and a real use case for a
+binary resource that still doesn't exist in the sales server's scope) — re-confirmed again this
+session, nothing changed on either. Rather than force filler commits, this session did a code
+review pass over the existing chatbot host and MCP client/registry looking for real bugs or
+gaps, since the working agreement prioritizes genuine, tested work over hitting a commit count.
+That turned up two real issues (both now fixed and tested, see Done above) plus some real README
+gaps. Next session: re-check the two backlog items below first: if still blocked, either keep
+doing this kind of review-driven hardening work, or ask the student whether to start scoping the
+15%-extra-credit UI (terminal or Web) mentioned in the assignment PDF, section 4.1 — that one
+doesn't depend on cloud/Wireshark access either and isn't blocked, it's just not yet in scope
+here because it was never added to this backlog.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
