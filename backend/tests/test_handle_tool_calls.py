@@ -96,6 +96,23 @@ def test_handle_tool_calls_survives_connection_error_and_keeps_processing_remain
     assert capsys.readouterr().out.count("[error]") == 2
 
 
+def test_handle_tool_calls_survives_unknown_tool_name(capsys):
+    client = FakeClient(
+        "sales",
+        [{"name": "buscar_productos", "description": "d", "inputSchema": {}}],
+    )
+    registry = make_registry(client)
+    session = ChatSession()
+    logger = logging.getLogger("test-handle-tool-calls-unknown-tool")
+
+    handle_tool_calls(registry, [tool_call("herramienta_inexistente", {})], session, logger)
+
+    assert session.messages[-1]["role"] == "tool"
+    assert "Unknown tool" in session.messages[-1]["content"]
+    assert "[error]" in capsys.readouterr().out
+    assert client.calls == []
+
+
 def test_handle_tool_calls_logs_error_entry():
     logged = []
 

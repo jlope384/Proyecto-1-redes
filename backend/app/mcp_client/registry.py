@@ -16,6 +16,10 @@ class UnknownPromptError(LookupError):
     pass
 
 
+class UnknownToolError(LookupError):
+    pass
+
+
 class ToolRegistry:
     def __init__(self):
         self._clients_by_tool = {}
@@ -48,7 +52,10 @@ class ToolRegistry:
         return list(self._ollama_tools)
 
     def client_for(self, tool_name):
-        return self._clients_by_tool[tool_name]
+        try:
+            return self._clients_by_tool[tool_name]
+        except KeyError:
+            raise UnknownToolError(f"Unknown tool: {tool_name}") from None
 
     def client_for_prompt(self, prompt_name):
         try:

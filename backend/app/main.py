@@ -12,7 +12,7 @@ from app.llm.ollama_client import OllamaClient, OllamaConnectionError
 from app.logging.interaction_logger import DEFAULT_LOG_DIR, build_interaction_logger, log_interaction
 from app.mcp_client.client import MCPClient
 from app.mcp_client.protocol import MCPProtocolError
-from app.mcp_client.registry import ToolRegistry
+from app.mcp_client.registry import ToolRegistry, UnknownToolError
 from app.mcp_client.transports.stdio import StdioTransport
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
@@ -92,7 +92,15 @@ def handle_tool_calls(registry, tool_calls, session, logger):
     for call in tool_calls:
         name = call["function"]["name"]
         arguments = call["function"]["arguments"]
-        client = registry.client_for(name)
+        try:
+            client = registry.client_for(name)
+        except UnknownToolError as exc:
+            # The LLM asked for a tool name no connected server exposes (a hallucination, or a
+            # typo it made up) - report it back as a tool error instead of crashing the session.
+            log_interaction(logger, "mcp", "error", {"name": name, "error": str(exc)})
+            print(f"[error] {exc}")
+            session.add_tool_result(name, f"Error calling tool '{name}': {exc}")
+            continue
         tag = f"mcp:{client.server_name}"
         log_interaction(logger, tag, "request", {"method": "tools/call", "name": name, "arguments": arguments})
         try:
