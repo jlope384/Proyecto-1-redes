@@ -18,6 +18,7 @@ from app.mcp_client.transports.stdio import StdioTransport
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
 GIT_REPO_DIR = WORKSPACE_DIR / "demo-repo"
 DEFAULT_LOG_PATH = Path(DEFAULT_LOG_DIR) / "interactions.log"
+MAX_TOOL_ROUNDS = 5
 
 SYSTEM_PROMPT = (
     "You are a helpful sales assistant for a clothing store. Use the available tools "
@@ -115,6 +116,36 @@ def handle_tool_calls(registry, tool_calls, session, logger):
         session.add_tool_result(name, text)
 
 
+def run_turn(llm_client, registry, session, logger, tools):
+    """Run one user turn to completion: keep calling the LLM and executing any tool calls it
+    requests, feeding the results back as `role: tool` messages, until it answers with plain
+    text or MAX_TOOL_ROUNDS is reached (e.g. "search for a product, then check its stock" needs
+    two chained tool calls in the same turn, not just one). Returns the final reply text, or
+    None if the LLM couldn't be reached (already reported to the caller)."""
+    for round_num in range(MAX_TOOL_ROUNDS):
+        log_interaction(logger, "llm", "request", session.history())
+        try:
+            message = llm_client.chat_raw(session.history(), tools=tools)
+        except OllamaConnectionError as exc:
+            print(f"[error] {exc}")
+            if round_num == 0:
+                session.drop_last()
+            return None
+        log_interaction(logger, "llm", "response", message)
+
+        if not message.get("tool_calls"):
+            reply = message.get("content", "")
+            session.add_assistant_message(reply)
+            return reply
+
+        session.add_assistant_message(message.get("content", ""), tool_calls=message["tool_calls"])
+        handle_tool_calls(registry, message["tool_calls"], session, logger)
+
+    reply = "Sorry, I couldn't finish that after several tool calls - could you rephrase it?"
+    session.add_assistant_message(reply)
+    return reply
+
+
 def format_log_entry(entry):
     source = entry.get("source", "?")
     direction = entry.get("direction", "?")
@@ -196,29 +227,9 @@ def run():
                 print(f"[prompt:{name}] {user_input}")
 
             session.add_user_message(user_input)
-            log_interaction(logger, "llm", "request", session.history())
-
-            try:
-                message = llm_client.chat_raw(session.history(), tools=ollama_tools)
-            except OllamaConnectionError as exc:
-                print(f"[error] {exc}")
-                session.drop_last()
+            reply = run_turn(llm_client, registry, session, logger, ollama_tools)
+            if reply is None:
                 continue
-
-            log_interaction(logger, "llm", "response", message)
-
-            if message.get("tool_calls"):
-                session.add_assistant_message(message.get("content", ""), tool_calls=message["tool_calls"])
-                handle_tool_calls(registry, message["tool_calls"], session, logger)
-
-                log_interaction(logger, "llm", "request", session.history())
-                followup = llm_client.chat_raw(session.history())
-                log_interaction(logger, "llm", "response", followup)
-                reply = followup["content"]
-            else:
-                reply = message["content"]
-
-            session.add_assistant_message(reply)
             print(f"Bot: {reply}")
     finally:
         for client in mcp_clients:
