@@ -29,7 +29,14 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
   against a demo repository at `backend/workspace/demo-repo/` (created automatically on first
   run, since that server has no `git_init` tool). Ask the bot to write a README and commit it, and
   it will use the filesystem tools to write the file and the git tools (`git_add`, `git_commit`,
-  `git_log`, ...) to commit it for real.
+  `git_log`, ...) to commit it for real. This requires a git identity configured globally
+  (`git config --global user.name/user.email`), or `git_commit` will fail.
+- **MCP prompts**: the sales server exposes reusable prompt templates (`recomendar_outfit`,
+  `resumen_pedido`) via `prompts/list`/`prompts/get`. Type `/prompt <name> key=value ...` at the
+  chatbot's `You:` prompt to start a turn from one of them instead of free-typed input.
+- **Chained tool calls in one turn**: the chatbot can call more than one tool per user turn (e.g.
+  search a product, then check its stock) - it keeps offering tools back to the LLM across up to
+  five rounds instead of stopping after the first tool call.
 
 - **HTTP transport scaffold for the sales server**: `mcp_server_sales/core/http_server.py` exposes
   the same hand-rolled `handle_message` JSON-RPC logic over a single `POST /rpc` HTTP endpoint
@@ -60,6 +67,7 @@ progresses — see `docs/progress.md` for the live backlog.
 ```bash
 cd backend
 python -m venv .venv
+source .venv/bin/activate    # on Linux/macOS
 .venv\Scripts\activate       # on Windows
 pip install -r requirements.txt
 ```
@@ -68,7 +76,10 @@ By default the client uses model `qwen2.5:7b` against `http://localhost:11434`. 
 environment variables if needed:
 
 ```bash
-set OLLAMA_MODEL=llama3
+export OLLAMA_MODEL=llama3        # on Linux/macOS
+export OLLAMA_HOST=http://localhost:11434
+
+set OLLAMA_MODEL=llama3           # on Windows (cmd)
 set OLLAMA_HOST=http://localhost:11434
 ```
 
@@ -81,6 +92,13 @@ python -m app.main
 
 Type your messages at the `You:` prompt; type `exit` to quit. Try asking about products, e.g.
 "Tienen camisas azules y cuanto cuestan?" — the model will call the sales MCP server for real data.
+
+To start a turn from one of the sales server's prompt templates instead of free-typed input:
+
+```
+You: /prompt resumen_pedido pedido_id=PED-1001
+You: /prompt recomendar_outfit ocasion=boda presupuesto=500
+```
 
 To review everything logged during a session (every LLM and MCP request/response, from
 `backend/logs/interactions.log`):
