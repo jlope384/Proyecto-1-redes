@@ -7,6 +7,7 @@ from app.ui.console import (
     render_bot_reply,
     render_error,
     render_prompt_echo,
+    render_thinking,
     render_tool_call,
     render_user_prompt,
 )
@@ -76,6 +77,16 @@ def test_render_prompt_echo_shows_name_and_text():
     out = buffer.getvalue()
     assert "[prompt:resumen_pedido]" in out
     assert "Resume el pedido PED-1001" in out
+
+
+def test_render_thinking_is_a_usable_context_manager_around_slow_work():
+    console, _buffer = make_console()
+    ran = []
+
+    with render_thinking(console=console):
+        ran.append("llm call happened")
+
+    assert ran == ["llm call happened"]
 
 
 def test_render_user_prompt_reads_from_injected_stream_and_strips_whitespace():

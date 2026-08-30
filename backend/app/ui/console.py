@@ -70,3 +70,13 @@ def render_prompt_echo(name, text, console=console):
     line = Text(f"[prompt:{name}]", style="dim yellow")
     line.append(f" {text}")
     console.print(line)
+
+
+def render_thinking(console=console):
+    """Context manager showing a spinner while waiting on a (possibly slow) LLM call.
+
+    Without this, the CLI gave no feedback at all between hitting enter and the reply
+    appearing - a plain violation of "visibility of system status", one of the basic
+    usability heuristics the assignment asks this UI to apply.
+    """
+    return console.status("[cyan]Thinking...[/cyan]", spinner="dots")

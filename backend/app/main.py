@@ -19,6 +19,7 @@ from app.ui.console import (
     render_bot_reply,
     render_error,
     render_prompt_echo,
+    render_thinking,
     render_tool_call,
     render_user_prompt,
 )
@@ -134,7 +135,8 @@ def run_turn(llm_client, registry, session, logger, tools):
     for round_num in range(MAX_TOOL_ROUNDS):
         log_interaction(logger, "llm", "request", session.history())
         try:
-            message = llm_client.chat_raw(session.history(), tools=tools)
+            with render_thinking():
+                message = llm_client.chat_raw(session.history(), tools=tools)
         except OllamaConnectionError as exc:
             render_error(str(exc))
             if round_num == 0:

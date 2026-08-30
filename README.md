@@ -48,6 +48,14 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
   (see `docs/progress.md`), and the chatbot in `app/main.py` still uses stdio for all three
   servers.
 
+- **Terminal UI (extra credit, in progress)**: `backend/app/ui/console.py` renders the chatbot
+  through [`rich`](https://github.com/Textualize/rich) instead of plain `print()`: the user prompt,
+  bot replies (boxed in their own panel), background MCP tool-call activity, errors and the startup
+  banner each get a fixed color chosen for visual hierarchy, following standard color-psychology
+  conventions (cyan = user input, green = the bot's actual answer, dim yellow = secondary/
+  in-progress tool activity, red = errors, blue = system info). Tool calls are now also visibly
+  announced before they run, which previously happened silently.
+
 More features (remote deployment, Wireshark analysis) will be added incrementally as the project
 progresses — see `docs/progress.md` for the live backlog.
 
