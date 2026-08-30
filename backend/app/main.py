@@ -14,6 +14,14 @@ from app.mcp_client.client import MCPClient
 from app.mcp_client.protocol import MCPProtocolError
 from app.mcp_client.registry import ToolRegistry, UnknownToolError
 from app.mcp_client.transports.stdio import StdioTransport
+from app.ui.console import (
+    render_banner,
+    render_bot_reply,
+    render_error,
+    render_prompt_echo,
+    render_tool_call,
+    render_user_prompt,
+)
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
 GIT_REPO_DIR = WORKSPACE_DIR / "demo-repo"
@@ -99,16 +107,17 @@ def handle_tool_calls(registry, tool_calls, session, logger):
             # The LLM asked for a tool name no connected server exposes (a hallucination, or a
             # typo it made up) - report it back as a tool error instead of crashing the session.
             log_interaction(logger, "mcp", "error", {"name": name, "error": str(exc)})
-            print(f"[error] {exc}")
+            render_error(str(exc))
             session.add_tool_result(name, f"Error calling tool '{name}': {exc}")
             continue
         tag = f"mcp:{client.server_name}"
+        render_tool_call(name, arguments)
         log_interaction(logger, tag, "request", {"method": "tools/call", "name": name, "arguments": arguments})
         try:
             result = client.call_tool(name, arguments)
         except (MCPProtocolError, ConnectionError) as exc:
             log_interaction(logger, tag, "error", {"name": name, "error": str(exc)})
-            print(f"[error] Tool call '{name}' failed: {exc}")
+            render_error(f"Tool call '{name}' failed: {exc}")
             session.add_tool_result(name, f"Error calling tool '{name}': {exc}")
             continue
         log_interaction(logger, tag, "response", result)
@@ -127,7 +136,7 @@ def run_turn(llm_client, registry, session, logger, tools):
         try:
             message = llm_client.chat_raw(session.history(), tools=tools)
         except OllamaConnectionError as exc:
-            print(f"[error] {exc}")
+            render_error(str(exc))
             if round_num == 0:
                 session.drop_last()
             return None
@@ -200,15 +209,10 @@ def run():
         registry.register(client)
     ollama_tools = registry.ollama_tools()
 
-    print(
-        f"Connected to Ollama model '{llm_client.model}', mcp-server-sales, the filesystem MCP "
-        "server and the git MCP server. Type 'exit' to quit, or '/prompt <name> key=value ...' "
-        "to start a turn from one of mcp-server-sales's prompt templates "
-        "(recomendar_outfit, resumen_pedido)."
-    )
+    render_banner(llm_client.model, [client.server_name for client in mcp_clients])
     try:
         while True:
-            user_input = input("You: ").strip()
+            user_input = render_user_prompt()
             if user_input.lower() in {"exit", "quit"}:
                 break
             if not user_input:
@@ -221,16 +225,16 @@ def run():
                     client = registry.client_for_prompt(name)
                     result = client.get_prompt(name, arguments)
                 except Exception as exc:  # UnknownPromptError, MCPProtocolError, bad arguments
-                    print(f"[error] {exc}")
+                    render_error(str(exc))
                     continue
                 user_input = prompt_text(result)
-                print(f"[prompt:{name}] {user_input}")
+                render_prompt_echo(name, user_input)
 
             session.add_user_message(user_input)
             reply = run_turn(llm_client, registry, session, logger, ollama_tools)
             if reply is None:
                 continue
-            print(f"Bot: {reply}")
+            render_bot_reply(reply)
     finally:
         for client in mcp_clients:
             client.close()
