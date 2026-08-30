@@ -140,21 +140,46 @@ Read this file at the start of every autonomous session and update the Status se
       filesystem/git servers' launch commands, scoping, and the tools exercised in the
       end-to-end demo scenario). Sections 9 and 10 are explicitly left for later — see backlog.
 
+- [x] Started the 15%-extra-credit terminal UI (backlog item raised by the previous session,
+      assignment section 4.1): `backend/app/ui/console.py` renders the chatbot host through
+      `rich` instead of undifferentiated `print()`. Fixed color convention chosen for visual
+      hierarchy and standard color psychology: cyan for the user's own prompt, green for the
+      bot's actual reply (boxed in its own panel so it stands out from the surrounding log),
+      dim yellow for secondary/background MCP tool-call activity (now also visibly announced
+      before it runs, which previously happened silently), bold red for errors, blue for the
+      startup banner/system info. Wired into `app/main.py`'s interactive loop and
+      `handle_tool_calls`/`run_turn`, replacing every plain `print()` there (deliberately left
+      `show_log`'s output as plain text - it's meant to be pipeable/greppable, so colorizing it
+      would work against that use case rather than for it). Also added a `render_thinking`
+      status spinner around the LLM call in `run_turn`, since the CLI previously gave zero
+      feedback between hitting enter and the reply appearing (a real "visibility of system
+      status" usability gap given how slow a local Ollama call can be). Unit-tested
+      (`tests/test_ui_console.py`, 8 tests, rendering into an in-memory `rich.Console` and
+      asserting on the plain-text content) and verified for real under an actual pseudo-tty
+      (`script -qc ...`), confirming the ANSI color codes are emitted correctly (blue banner,
+      green bot panel, dim yellow tool-call line, bold red error) - not just that it degrades
+      gracefully to plain text under pytest's captured, non-tty stdout. `rich>=13.7` added to
+      `backend/requirements.txt`. Documented in the top-level `README.md`.
+
 ### Note on this session's source of work
-Both items already in the backlog below were still blocked on things this sandbox genuinely
-doesn't have (a live Wireshark capture against a *remote* deployment, and a real use case for a
-binary resource that still doesn't exist in the sales server's scope) — re-confirmed again this
-session, nothing changed on either. Rather than force filler commits, this session did a code
-review pass over the existing chatbot host and MCP client/registry looking for real bugs or
-gaps, since the working agreement prioritizes genuine, tested work over hitting a commit count.
-That turned up two real issues (both now fixed and tested, see Done above) plus some real README
-gaps. Next session: re-check the two backlog items below first: if still blocked, either keep
-doing this kind of review-driven hardening work, or ask the student whether to start scoping the
-15%-extra-credit UI (terminal or Web) mentioned in the assignment PDF, section 4.1 — that one
-doesn't depend on cloud/Wireshark access either and isn't blocked, it's just not yet in scope
-here because it was never added to this backlog.
+Re-checked both items already in the backlog below at the start of this session: still blocked
+on things this sandbox genuinely doesn't have (a live Wireshark capture against a *remote*
+deployment, and a real use case for a binary resource that still doesn't exist in the sales
+server's scope) — nothing changed on either, still nothing implemented for them. As the previous
+session's note suggested, this session instead started the 15%-extra-credit terminal UI from
+assignment section 4.1 (see Done above): a first, real pass at HCI-informed colored/paneled
+rendering plus a "thinking" status indicator, replacing the CLI's plain, undifferentiated
+`print()` output. This is a genuine start, not the whole 15%: still open for a future session
+are things like reviewing panel width/wrapping behavior on a narrow real terminal, deciding
+whether tool call *results* (not just the fact that a call happened) should ever be shown to the
+user instead of only fed back to the LLM, and whether the same treatment is worth extending to
+`app/demo_mcp_sales.py`'s output.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
+- [ ] Continue the terminal UI extra-credit work started this session (see Done above): review
+      readability/wrapping on a real narrow terminal, decide on showing tool call results to the
+      user (not just to the LLM), and whether the same rich-based treatment is worth applying to
+      `app/demo_mcp_sales.py`.
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
       section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
       capture against the *remote* deployment (student's own machine/network), and conclusions
@@ -162,12 +187,19 @@ here because it was never added to this backlog.
       remote deployment (see below) exists.
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
-      just to demonstrate the shape. Re-checked this session: the current catalog/order data
-      (`backend/mcp_server_sales/data/catalog.py`) has no images or binary documents, so there's
-      still no genuine fit — nothing implemented, left for a future session if the scope grows
-      (e.g. product photos).
+      just to demonstrate the shape. Re-checked this session again: the current catalog/order
+      data (`backend/mcp_server_sales/data/catalog.py`) has no images or binary documents, so
+      there's still no genuine fit — nothing implemented, left for a future session if the scope
+      grows (e.g. product photos).
 
 ### Needs verification by the student on their own machine
+- New this session: the terminal UI (`app/ui/console.py`, `rich` dependency) was verified to
+  emit correct ANSI color codes under a real pseudo-tty in this sandbox (`script -qc ...`), and
+  the rendering logic itself is unit-tested, but its actual on-screen readability (panel width
+  wrapping on a narrow real terminal window, whether the chosen colors have enough contrast in
+  your terminal's actual color theme/light-vs-dark background) was not checked against a real
+  interactive session. Run `python -m app.main` in your own terminal and confirm the banner,
+  bot-reply panels, tool-call lines and errors all look right and don't wrap awkwardly.
 - Full live run of `python -m app.main` with a real Ollama server: the sandbox this session ran
   in has no `localhost:11434`, so the three-way tool routing (sales + filesystem + git) was
   verified end-to-end with real subprocesses but with the LLM call driven directly rather than
