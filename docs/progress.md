@@ -140,6 +140,28 @@ Read this file at the start of every autonomous session and update the Status se
       filesystem/git servers' launch commands, scoping, and the tools exercised in the
       end-to-end demo scenario). Sections 9 and 10 are explicitly left for later — see backlog.
 
+- [x] Finished the three follow-ups this session left open on the 15%-extra-credit terminal UI:
+      (1) Tool call results are now shown to the user, not just fed to the LLM: added
+      `render_tool_result` (`app/ui/console.py`), same dim-yellow/low-visual-weight styling as
+      the existing "-> calling tool" line, truncated to 200 chars so a large payload (e.g. the
+      `catalog://productos` resource) can't flood the terminal. Wired into `handle_tool_calls`
+      right after a successful `call_tool`. Unit-tested (new cases in `tests/test_ui_console.py`
+      and an updated case in `tests/test_handle_tool_calls.py` asserting the result text reaches
+      stdout), and verified for real under a pseudo-tty (correct dim-yellow ANSI codes).
+      (2) Reviewed readability/wrapping on a real narrow terminal: ran the banner, a tool call +
+      result, a bot reply panel, and an error line under `script -qc ...` with `COLUMNS=40`. Both
+      `Panel`s (banner, bot reply) wrap their text cleanly inside the box; the plain tool-call/
+      result/error lines word-wrap at the console width with no crash. Long unbreakable tokens
+      (e.g. a checkout URL) fold mid-word, which is normal terminal-wrapping behavior, not a
+      defect - no code change needed here, this was a real check that came back clean.
+      (3) Decided the same `rich` treatment IS worth a light-touch version for
+      `app/demo_mcp_sales.py`, unlike `show_log` (which stays plain because it's meant to be
+      piped/grepped): this script is read directly by a person exercising the protocol by hand,
+      so added `render_demo_step` (bold blue label per JSON-RPC step, e.g. `tools/call
+      buscar_productos ->`) while leaving the raw response payload after it exactly as Python
+      prints it - no reformatting, no truncation, since showing the real complete server
+      response is the whole point of the script. Unit-tested and verified for real against the
+      actual `mcp_server_sales` subprocess (`python -m app.demo_mcp_sales`).
 - [x] Started the 15%-extra-credit terminal UI (backlog item raised by the previous session,
       assignment section 4.1): `backend/app/ui/console.py` renders the chatbot host through
       `rich` instead of undifferentiated `print()`. Fixed color convention chosen for visual
@@ -162,24 +184,17 @@ Read this file at the start of every autonomous session and update the Status se
       `backend/requirements.txt`. Documented in the top-level `README.md`.
 
 ### Note on this session's source of work
-Re-checked both items already in the backlog below at the start of this session: still blocked
-on things this sandbox genuinely doesn't have (a live Wireshark capture against a *remote*
-deployment, and a real use case for a binary resource that still doesn't exist in the sales
-server's scope) — nothing changed on either, still nothing implemented for them. As the previous
-session's note suggested, this session instead started the 15%-extra-credit terminal UI from
-assignment section 4.1 (see Done above): a first, real pass at HCI-informed colored/paneled
-rendering plus a "thinking" status indicator, replacing the CLI's plain, undifferentiated
-`print()` output. This is a genuine start, not the whole 15%: still open for a future session
-are things like reviewing panel width/wrapping behavior on a narrow real terminal, deciding
-whether tool call *results* (not just the fact that a call happened) should ever be shown to the
-user instead of only fed back to the LLM, and whether the same treatment is worth extending to
-`app/demo_mcp_sales.py`'s output.
+Re-checked the two blocked backlog items at the start of this session: still blocked on things
+this sandbox genuinely doesn't have (a live Wireshark capture against a *remote* deployment, and
+a real use case for a binary resource that still doesn't exist in the sales server's scope) —
+nothing changed on either, still nothing implemented for them. This session instead finished the
+three concrete follow-ups the previous session had left open on the 15%-extra-credit terminal UI
+(see Done above): showing tool call results to the user, a real narrow-terminal readability
+review, and a light-touch `rich` pass on `app/demo_mcp_sales.py`. That closes out this round of
+terminal-UI work; if more of the 15% extra credit is wanted later (e.g. richer Markdown rendering
+of bot replies, or a different layout), that would be new scope, not a loose end from this round.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-- [ ] Continue the terminal UI extra-credit work started this session (see Done above): review
-      readability/wrapping on a real narrow terminal, decide on showing tool call results to the
-      user (not just to the LLM), and whether the same rich-based treatment is worth applying to
-      `app/demo_mcp_sales.py`.
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
       section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
       capture against the *remote* deployment (student's own machine/network), and conclusions
@@ -194,12 +209,18 @@ user instead of only fed back to the LLM, and whether the same treatment is wort
 
 ### Needs verification by the student on their own machine
 - New this session: the terminal UI (`app/ui/console.py`, `rich` dependency) was verified to
-  emit correct ANSI color codes under a real pseudo-tty in this sandbox (`script -qc ...`), and
-  the rendering logic itself is unit-tested, but its actual on-screen readability (panel width
-  wrapping on a narrow real terminal window, whether the chosen colors have enough contrast in
-  your terminal's actual color theme/light-vs-dark background) was not checked against a real
-  interactive session. Run `python -m app.main` in your own terminal and confirm the banner,
-  bot-reply panels, tool-call lines and errors all look right and don't wrap awkwardly.
+  emit correct ANSI color codes under a real pseudo-tty in this sandbox (`script -qc ...`) at
+  both a normal (100-column) and a narrow (40-column) width, and the rendering logic itself is
+  unit-tested, but its actual on-screen readability (whether the chosen colors have enough
+  contrast in your terminal's actual color theme/light-vs-dark background) was not checked
+  against a real interactive session. Run `python -m app.main` in your own terminal and confirm
+  the banner, bot-reply panels, tool-call/tool-result lines and errors all look right.
+- New this session: tool call results are now printed to the terminal (`render_tool_result`),
+  not just fed back to the LLM. Verified for real under a pseudo-tty that the dim-yellow ANSI
+  codes come out correctly, but not seen yet inside an actual live `python -m app.main` session
+  with a real Ollama model driving the tool calls - worth a look while you're doing the live run
+  below, to confirm the 200-char truncation doesn't feel too aggressive or too loose for the
+  kinds of results your tools actually return.
 - Full live run of `python -m app.main` with a real Ollama server: the sandbox this session ran
   in has no `localhost:11434`, so the three-way tool routing (sales + filesystem + git) was
   verified end-to-end with real subprocesses but with the LLM call driven directly rather than
