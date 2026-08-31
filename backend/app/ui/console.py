@@ -93,6 +93,22 @@ def render_prompt_echo(name, text, console=console):
     console.print(line)
 
 
+def render_demo_step(label, value, console=console):
+    """Print one step of `app/demo_mcp_sales.py` (a raw JSON-RPC call and its result).
+
+    Unlike `show_log`, this script isn't meant to be piped/grepped - it's read directly by
+    a person exercising the protocol by hand - so a bold label to separate each call from
+    the raw payload that follows it is worth the small addition, as long as the payload
+    itself stays exactly as Python prints it (no reformatting, no truncation), since the
+    whole point of this script is to show the real, complete server response.
+    """
+    line = Text()
+    line.append(f"{label} -> ", style="bold blue")
+    line.append(str(value))
+    console.print(line)
+    console.print()
+
+
 def render_thinking(console=console):
     """Context manager showing a spinner while waiting on a (possibly slow) LLM call.
 

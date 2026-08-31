@@ -6,6 +6,7 @@ from app.ui.console import (
     TOOL_RESULT_MAX_CHARS,
     render_banner,
     render_bot_reply,
+    render_demo_step,
     render_error,
     render_prompt_echo,
     render_thinking,
@@ -91,6 +92,20 @@ def test_render_tool_result_truncates_long_payloads():
     assert "x" * TOOL_RESULT_MAX_CHARS in out
     assert "..." in out
     assert "x" * (TOOL_RESULT_MAX_CHARS + 1) not in out
+
+
+def test_render_demo_step_shows_label_and_raw_value_unmodified():
+    console, buffer = make_console()
+
+    render_demo_step(
+        "tools/call buscar_productos",
+        {"content": [{"type": "text", "text": "3 hits"}]},
+        console=console,
+    )
+
+    out = buffer.getvalue()
+    assert "tools/call buscar_productos" in out
+    assert "{'content': [{'type': 'text', 'text': '3 hits'}]}" in out
 
 
 def test_render_prompt_echo_shows_name_and_text():
