@@ -55,6 +55,27 @@ def render_tool_call(name, arguments, console=console):
     console.print(line)
 
 
+TOOL_RESULT_MAX_CHARS = 200
+
+
+def render_tool_result(text, console=console):
+    """Show the outcome of a tool call to the user, not just to the LLM.
+
+    Previously a tool call's result was only ever fed back into the chat session for the
+    model to read - the user saw that a call happened (`render_tool_call`) but never what
+    it returned, even though that's often the actual useful information (e.g. the stock
+    count `consultar_inventario` found). Truncated to `TOOL_RESULT_MAX_CHARS` so a large
+    JSON payload (e.g. the full product catalog resource) doesn't flood the terminal -
+    same dim-yellow, low-visual-weight styling as the call line above it, since this is
+    still background activity, not the assistant's actual reply.
+    """
+    if len(text) > TOOL_RESULT_MAX_CHARS:
+        text = text[:TOOL_RESULT_MAX_CHARS] + "..."
+    line = Text("  <- result: ", style="dim yellow")
+    line.append(text, style="dim yellow")
+    console.print(line)
+
+
 def render_bot_reply(text, console=console):
     console.print(Panel(Text(text), title="Bot", title_align="left", border_style="green"))
 

@@ -3,12 +3,14 @@ import io
 from rich.console import Console
 
 from app.ui.console import (
+    TOOL_RESULT_MAX_CHARS,
     render_banner,
     render_bot_reply,
     render_error,
     render_prompt_echo,
     render_thinking,
     render_tool_call,
+    render_tool_result,
     render_user_prompt,
 )
 
@@ -67,6 +69,28 @@ def test_render_tool_call_handles_no_arguments():
 
     out = buffer.getvalue()
     assert "consultar_inventario()" in out
+
+
+def test_render_tool_result_shows_the_result_text():
+    console, buffer = make_console()
+
+    render_tool_result("3 productos encontrados", console=console)
+
+    out = buffer.getvalue()
+    assert "3 productos encontrados" in out
+
+
+def test_render_tool_result_truncates_long_payloads():
+    console, buffer = make_console()
+
+    render_tool_result("x" * (TOOL_RESULT_MAX_CHARS + 50), console=console)
+
+    # rich word-wraps the line at the console width, so compare with wrapping removed
+    # rather than assuming the truncated text survives as one unbroken substring.
+    out = buffer.getvalue().replace("\n", "")
+    assert "x" * TOOL_RESULT_MAX_CHARS in out
+    assert "..." in out
+    assert "x" * (TOOL_RESULT_MAX_CHARS + 1) not in out
 
 
 def test_render_prompt_echo_shows_name_and_text():

@@ -21,6 +21,7 @@ from app.ui.console import (
     render_prompt_echo,
     render_thinking,
     render_tool_call,
+    render_tool_result,
     render_user_prompt,
 )
 
@@ -123,6 +124,7 @@ def handle_tool_calls(registry, tool_calls, session, logger):
             continue
         log_interaction(logger, tag, "response", result)
         text = result["content"][0]["text"]
+        render_tool_result(text)
         session.add_tool_result(name, text)
 
 

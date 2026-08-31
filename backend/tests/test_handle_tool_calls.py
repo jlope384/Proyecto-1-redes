@@ -37,7 +37,7 @@ def tool_call(name, arguments):
     return {"function": {"name": name, "arguments": arguments}}
 
 
-def test_handle_tool_calls_adds_tool_result_on_success():
+def test_handle_tool_calls_adds_tool_result_on_success(capsys):
     client = FakeClient(
         "sales",
         [{"name": "buscar_productos", "description": "d", "inputSchema": {}}],
@@ -54,6 +54,7 @@ def test_handle_tool_calls_adds_tool_result_on_success():
         "name": "buscar_productos",
         "content": "3 productos encontrados",
     }
+    assert "3 productos encontrados" in capsys.readouterr().out
 
 
 def test_handle_tool_calls_survives_mcp_protocol_error(capsys):
