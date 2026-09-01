@@ -183,16 +183,41 @@ Read this file at the start of every autonomous session and update the Status se
       gracefully to plain text under pytest's captured, non-tty stdout. `rich>=13.7` added to
       `backend/requirements.txt`. Documented in the top-level `README.md`.
 
-### Note on this session's source of work
-Re-checked the two blocked backlog items at the start of this session: still blocked on things
-this sandbox genuinely doesn't have (a live Wireshark capture against a *remote* deployment, and
-a real use case for a binary resource that still doesn't exist in the sales server's scope) —
-nothing changed on either, still nothing implemented for them. This session instead finished the
-three concrete follow-ups the previous session had left open on the 15%-extra-credit terminal UI
-(see Done above): showing tool call results to the user, a real narrow-terminal readability
-review, and a light-touch `rich` pass on `app/demo_mcp_sales.py`. That closes out this round of
-terminal-UI work; if more of the 15% extra credit is wanted later (e.g. richer Markdown rendering
-of bot replies, or a different layout), that would be new scope, not a loose end from this round.
+- [x] Re-checked both remaining backlog items at the start of this session (report sections 9/10,
+      and the optional binary resource): both still genuinely blocked on the same things as
+      before (a live Wireshark capture against a *remote* deployment that doesn't exist yet, and
+      no real use case for a binary resource in the sales server's scope) — nothing to implement
+      there, so this session did a focused code-review pass over the whole `backend/` tree
+      instead (client, both servers, transports, host loop) looking for real crash/robustness
+      bugs, the same kind of work earlier sessions did when they found and fixed the
+      hallucinated-tool-name and tool-call-chaining bugs. Found and fixed four, each with a
+      regression test that fails against the pre-fix code and passes after:
+      1. `buscar_productos` raised an uncaught `AttributeError` (not caught by the existing
+         `except (TypeError, KeyError)` net) on a non-string `query` argument (e.g. `{"query":
+         123}`, plausible from an LLM's JSON tool-call arguments), which crashed the whole
+         `mcp-server-sales` subprocess for the rest of the session. Widened the except clause to
+         also catch `AttributeError`.
+      2. `generar_enlace_de_pago` only checked `cantidad > stock`, so `cantidad <= 0` (e.g. -5)
+         always passed regardless of stock and produced a "confirmed" payment link with a
+         negative total. Added an explicit positive-quantity check.
+      3. `StdioTransport.receive()` let a `json.JSONDecodeError` propagate uncaught if a server
+         subprocess ever wrote a non-JSON line to stdout (e.g. a first-run banner from a server
+         launched via `npx`/`uvx`, which share that same stream with the JSON-RPC protocol) -
+         now raises a normal `ConnectionError` instead, same as the existing closed-stdout case.
+         `StdioTransport.close()` let `subprocess.TimeoutExpired` propagate if a server ignored
+         `terminate()`, which (uncaught by `app/main.py`'s per-client cleanup loop) would skip
+         closing every other already-connected server after it - now kills the process instead.
+         No test file existed for `StdioTransport` before this session; added
+         `tests/test_stdio_transport.py` against a mocked subprocess (6 tests).
+      4. In `app/main.py:run()`, all three MCP servers were connected and registered *before*
+         the `try/finally` that closes them, so if one server failed to start or register after
+         another had already spawned successfully, the earlier subprocess was never terminated.
+         Extracted `connect_mcp_servers()` (closes every client connected so far and re-raises
+         on a later failure) and moved registration inside the existing `try/finally`.
+         Unit-tested with fake connectors/clients (`tests/test_connect_mcp_servers.py`, 3 tests).
+      All four verified against the real `mcp_server_sales` subprocess via
+      `python -m app.demo_mcp_sales` after the fixes (still runs correctly end-to-end), plus the
+      full suite (84 tests, up from 73 at the start of this session, all passing).
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
@@ -208,6 +233,20 @@ of bot replies, or a different layout), that would be new scope, not a loose end
       grows (e.g. product photos).
 
 ### Needs verification by the student on their own machine
+- New this session: the four bug fixes above (`buscar_productos` crash, `generar_enlace_de_pago`
+  validation, `StdioTransport` hardening, the startup subprocess-leak fix in `app/main.py`) are
+  all unit-tested and the sales server was re-verified against its real subprocess via
+  `python -m app.demo_mcp_sales`, but none were exercised through a live `python -m app.main`
+  session with a real Ollama model driving tool calls, for the same sandbox reason noted below.
+  Worth a quick look during your next live run, especially the `StdioTransport.close()` fix (kill
+  on a slow-exiting subprocess) since that only really shows up under real process timing.
+- Checked this session whether Docker could be used to prepare (and locally test) a container for
+  the section-6 remote deployment ahead of time: the `docker` CLI is present in this sandbox but
+  its daemon cannot be started here (`ulimit: error setting limit (Operation not permitted)` from
+  `service docker start`), so no Dockerfile was written — an untested Dockerfile wouldn't meet
+  this project's "real, tested" bar, and per the working agreement this is exactly the kind of
+  step that needs the student's own machine/cloud account rather than a workaround. Still
+  genuinely blocked; no need to re-attempt this in sandbox in a future session.
 - New this session: the terminal UI (`app/ui/console.py`, `rich` dependency) was verified to
   emit correct ANSI color codes under a real pseudo-tty in this sandbox (`script -qc ...`) at
   both a normal (100-column) and a narrow (40-column) width, and the rendering logic itself is
