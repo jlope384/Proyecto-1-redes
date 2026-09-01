@@ -97,6 +97,19 @@ def test_tools_call_missing_one_of_several_required_arguments():
     assert "cantidad" in result["content"][0]["text"]
 
 
+def test_tools_call_buscar_productos_non_string_query_returns_tool_error_not_crash():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 44,
+            "method": "tools/call",
+            "params": {"name": "buscar_productos", "arguments": {"query": 123}},
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+
+
 def test_tools_call_wrong_argument_type_returns_tool_error_not_crash():
     response = handle_message(
         {

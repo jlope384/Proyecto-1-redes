@@ -54,10 +54,12 @@ def _tool_call_result(name, arguments):
         return {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}], "isError": False}
     except ValueError as exc:
         return {"content": [{"type": "text", "text": str(exc)}], "isError": True}
-    except (TypeError, KeyError) as exc:
+    except (TypeError, KeyError, AttributeError) as exc:
         # Defensive net for malformed arguments a schema check above didn't catch
         # (e.g. wrong type for a present field) - never let a bad tool call from
-        # the LLM crash the whole server subprocess.
+        # the LLM crash the whole server subprocess. AttributeError covers a
+        # present-but-wrong-type field whose handler calls a method the given
+        # type doesn't have (e.g. a non-string "query" reaching str.lower()).
         return {"content": [{"type": "text", "text": f"Argumentos invalidos para {name}: {exc}"}], "isError": True}
 
 
