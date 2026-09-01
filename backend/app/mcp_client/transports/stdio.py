@@ -28,10 +28,20 @@ class StdioTransport:
         if line == "":
             stderr = self.process.stderr.read()
             raise ConnectionError(f"MCP server closed stdout unexpectedly. stderr: {stderr}")
-        return json.loads(line)
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ConnectionError(f"MCP server sent a non-JSON line on stdout: {line!r} ({exc})") from exc
 
     def close(self):
         if self.process.poll() is None:
             self.process.stdin.close()
             self.process.terminate()
-            self.process.wait(timeout=5)
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                # The server ignored terminate() (e.g. still starting up) - kill it so a
+                # single slow/hung subprocess can't stop the other connected servers
+                # (sales/filesystem/git) from being closed too by the caller's cleanup loop.
+                self.process.kill()
+                self.process.wait()
