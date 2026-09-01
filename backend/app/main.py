@@ -76,6 +76,22 @@ def connect_git_mcp_server(logger, repo_path):
     return client
 
 
+def connect_mcp_servers(connectors):
+    """Call each zero-arg connector in order, returning the connected clients. If one
+    raises (subprocess failed to launch, initialize() failed, ...), every client
+    connected so far is closed before re-raising, so a failed startup never leaks an
+    already-spawned server subprocess."""
+    clients = []
+    try:
+        for connector in connectors:
+            clients.append(connector())
+        return clients
+    except Exception:
+        for client in clients:
+            client.close()
+        raise
+
+
 def parse_prompt_command(text):
     """Parse a `/prompt <name> [key=value ...]` line into (name, arguments), or None if `text`
     isn't a prompt command."""
@@ -203,18 +219,20 @@ def run():
     session = ChatSession(system_prompt=SYSTEM_PROMPT)
     logger = build_interaction_logger()
 
-    sales_client = connect_sales_mcp_server(logger)
-    filesystem_client = connect_filesystem_mcp_server(logger, WORKSPACE_DIR)
-    git_client = connect_git_mcp_server(logger, GIT_REPO_DIR)
-    mcp_clients = [sales_client, filesystem_client, git_client]
-
-    registry = ToolRegistry()
-    for client in mcp_clients:
-        registry.register(client)
-    ollama_tools = registry.ollama_tools()
-
-    render_banner(llm_client.model, [client.server_name for client in mcp_clients])
+    mcp_clients = connect_mcp_servers(
+        [
+            lambda: connect_sales_mcp_server(logger),
+            lambda: connect_filesystem_mcp_server(logger, WORKSPACE_DIR),
+            lambda: connect_git_mcp_server(logger, GIT_REPO_DIR),
+        ]
+    )
     try:
+        registry = ToolRegistry()
+        for client in mcp_clients:
+            registry.register(client)
+        ollama_tools = registry.ollama_tools()
+
+        render_banner(llm_client.model, [client.server_name for client in mcp_clients])
         while True:
             user_input = render_user_prompt()
             if user_input.lower() in {"exit", "quit"}:
