@@ -126,6 +126,23 @@ def test_tools_call_wrong_argument_type_returns_tool_error_not_crash():
     assert result["isError"] is True
 
 
+def test_tools_call_generar_enlace_de_pago_rejects_non_positive_cantidad():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 45,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                "arguments": {"sku": "CAM-001", "talla": "M", "cantidad": -5},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "cantidad" in result["content"][0]["text"].lower()
+
+
 def test_unknown_method_returns_json_rpc_error():
     response = handle_message({"jsonrpc": "2.0", "id": 5, "method": "not/a/method"})
     assert response["error"]["code"] == -32601

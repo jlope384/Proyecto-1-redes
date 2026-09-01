@@ -88,6 +88,8 @@ def generar_enlace_de_pago(sku, talla, cantidad):
     product = find_product(sku)
     if product is None:
         raise ValueError(f"SKU desconocido: {sku}")
+    if cantidad <= 0:
+        raise ValueError(f"Cantidad invalida: {cantidad}. Debe ser un entero positivo.")
     stock = INVENTORY.get(sku, {}).get(talla, 0)
     if cantidad > stock:
         raise ValueError(f"Stock insuficiente para {sku} talla {talla}: hay {stock}, se pidieron {cantidad}")
