@@ -115,6 +115,23 @@ def prompt_text(prompt_result):
     return "\n".join(m["content"]["text"] for m in prompt_result["messages"])
 
 
+def extract_tool_result_text(result):
+    """Flatten a `tools/call` result's `content` array into a string for the chat session.
+
+    The MCP spec only guarantees `content` is a list of typed items - a server is free to
+    return an empty list, or items that aren't `type: text` (e.g. `image`/`resource`). The
+    hand-rolled sales server always returns a single text item, but the official filesystem/
+    git servers are third-party code we don't control, so this can't assume that shape."""
+    content = result.get("content") or []
+    texts = [item["text"] for item in content if isinstance(item, dict) and item.get("type") == "text"]
+    if texts:
+        return "\n".join(texts)
+    if content:
+        types = ", ".join(sorted({item.get("type", "unknown") for item in content if isinstance(item, dict)}))
+        return f"[tool result had no text content; type(s): {types}]"
+    return "[tool returned no content]"
+
+
 def handle_tool_calls(registry, tool_calls, session, logger):
     for call in tool_calls:
         name = call["function"]["name"]
@@ -139,7 +156,7 @@ def handle_tool_calls(registry, tool_calls, session, logger):
             session.add_tool_result(name, f"Error calling tool '{name}': {exc}")
             continue
         log_interaction(logger, tag, "response", result)
-        text = result["content"][0]["text"]
+        text = extract_tool_result_text(result)
         render_tool_result(text)
         session.add_tool_result(name, text)
 
