@@ -218,6 +218,37 @@ Read this file at the start of every autonomous session and update the Status se
       All four verified against the real `mcp_server_sales` subprocess via
       `python -m app.demo_mcp_sales` after the fixes (still runs correctly end-to-end), plus the
       full suite (84 tests, up from 73 at the start of this session, all passing).
+- [x] Re-checked both remaining backlog items again at the start of this session: still
+      genuinely blocked on the same things (a live Wireshark capture against a *remote*
+      deployment, and no real use case for a binary resource) — nothing new to implement there,
+      so this session did another focused code-review pass over `backend/` and found and fixed
+      two more real, previously-untested crash bugs:
+      1. `handle_tool_calls` (`app/main.py`) read a `tools/call` result as
+         `result["content"][0]["text"]` unconditionally. Nothing in the MCP spec guarantees a
+         non-empty `content` list or that every item is `type: text` — a server is free to
+         return `content: []`, or a non-text item like an `image` (the official filesystem/git
+         servers are third-party code, not something this project controls). Either shape raised
+         an uncaught `IndexError`/`KeyError` that killed the whole chatbot session. Added
+         `extract_tool_result_text()`: joins all `text`-type content items, and falls back to a
+         descriptive placeholder (naming the content type, or "no content") instead of crashing.
+         Unit-tested with an empty-content result and a non-text (`image`) result
+         (`tests/test_handle_tool_calls.py`), plus direct tests of the new helper.
+      2. `OllamaClient.chat_raw` (`app/llm/ollama_client.py`) called `response.json()["message"]`
+         *outside* the `try/except` that catches request/connection failures, with no check that
+         the `"message"` key exists. A 200 response with a non-JSON body, or a well-formed but
+         unexpected JSON shape (e.g. an Ollama error payload like `{"error": "model not found"}`
+         returned with a 200 status instead of the expected 4xx), raised an uncaught
+         `JSONDecodeError`/`KeyError` straight out of `chat_raw` instead of the documented
+         `OllamaConnectionError` that `run_turn` relies on to keep the session alive after an LLM
+         failure. Fixed by moving `response.json()` inside the `try` (catching `ValueError` for
+         a non-JSON body) and explicitly checking for the `"message"` key before returning it.
+         Unit-tested per the existing mocked-LLM-call pattern (`tests/test_ollama_client.py`):
+         invalid JSON body, and a JSON body missing `"message"`.
+      Both verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end) and the full suite (90 tests, up
+      from 84 at the start of this session, all passing). Neither fix could be exercised through
+      a live `python -m app.main` + real Ollama session in this sandbox, for the usual reason
+      (no `localhost:11434` here) — see "Needs verification" below.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
@@ -232,7 +263,20 @@ Read this file at the start of every autonomous session and update the Status se
       there's still no genuine fit — nothing implemented, left for a future session if the scope
       grows (e.g. product photos).
 
+Both items above have now been re-checked and found still-blocked across several consecutive
+sessions with no change in their blockers — a future session shouldn't need to re-verify this
+from scratch every time; only re-check if something about the environment actually changes
+(e.g. the remote deployment gets done, or product images get added to the catalog).
+
 ### Needs verification by the student on their own machine
+- New this session: the two crash fixes above (`handle_tool_calls`'s `extract_tool_result_text`,
+  `OllamaClient.chat_raw`'s response-parsing guard) are unit-tested and the sales server was
+  re-verified via `python -m app.demo_mcp_sales`, but neither was exercised through a live
+  `python -m app.main` session with a real Ollama model, for the same sandbox reason as the rest
+  of this list. The `OllamaClient` one is worth a real look: if you ever see the chatbot print an
+  `[error]` line mentioning "unexpected response shape" during a live run, that means Ollama
+  returned something other than a normal chat message (e.g. an error payload) and would be a
+  real sign worth investigating, not a false positive.
 - New this session: the four bug fixes above (`buscar_productos` crash, `generar_enlace_de_pago`
   validation, `StdioTransport` hardening, the startup subprocess-leak fix in `app/main.py`) are
   all unit-tested and the sales server was re-verified against its real subprocess via
