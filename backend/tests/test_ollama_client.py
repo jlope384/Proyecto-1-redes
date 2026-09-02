@@ -48,3 +48,39 @@ def test_chat_raises_ollama_connection_error_on_network_failure():
         except OllamaConnectionError:
             return
     assert False, "expected OllamaConnectionError to be raised"
+
+
+def test_chat_raw_raises_ollama_connection_error_on_invalid_json_body():
+    # A 200 response whose body isn't valid JSON (e.g. Ollama crashed mid-response, or a proxy
+    # returned an HTML error page with a 200 status) used to raise an uncaught JSONDecodeError
+    # straight out of chat_raw instead of the documented OllamaConnectionError.
+    client = OllamaClient(model="test-model")
+    fake_response = MagicMock()
+    fake_response.raise_for_status.return_value = None
+    fake_response.json.side_effect = ValueError("Expecting value: line 1 column 1 (char 0)")
+
+    with patch("app.llm.ollama_client.requests.post", return_value=fake_response):
+        try:
+            client.chat_raw([{"role": "user", "content": "hi"}])
+        except OllamaConnectionError:
+            return
+    assert False, "expected OllamaConnectionError to be raised"
+
+
+def test_chat_raw_raises_ollama_connection_error_on_missing_message_key():
+    # A well-formed JSON body that doesn't have the expected "message" key (e.g. an Ollama
+    # error payload like {"error": "model not found"} returned with a 200 status) used to raise
+    # an uncaught KeyError straight out of chat_raw instead of the documented
+    # OllamaConnectionError.
+    client = OllamaClient(model="test-model")
+    fake_response = MagicMock()
+    fake_response.raise_for_status.return_value = None
+    fake_response.json.return_value = {"error": "model 'test-model' not found"}
+
+    with patch("app.llm.ollama_client.requests.post", return_value=fake_response):
+        try:
+            client.chat_raw([{"role": "user", "content": "hi"}])
+        except OllamaConnectionError as exc:
+            assert "unexpected response shape" in str(exc)
+            return
+    assert False, "expected OllamaConnectionError to be raised"

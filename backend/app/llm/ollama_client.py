@@ -26,9 +26,21 @@ class OllamaClient:
         try:
             response = requests.post(url, json=payload, timeout=self.timeout)
             response.raise_for_status()
+            data = response.json()
         except requests.exceptions.RequestException as exc:
             raise OllamaConnectionError(f"Could not reach Ollama at {self.base_url}: {exc}") from exc
-        return response.json()["message"]
+        except ValueError as exc:
+            # response.json() on a non-JSON 200 body (older requests versions raise a plain
+            # json.JSONDecodeError here, a ValueError subclass, instead of a RequestException).
+            raise OllamaConnectionError(
+                f"Ollama at {self.base_url} returned a response that isn't valid JSON: {exc}"
+            ) from exc
+        if "message" not in data:
+            raise OllamaConnectionError(
+                f"Ollama at {self.base_url} returned an unexpected response shape (no 'message' "
+                f"key): {data!r}"
+            )
+        return data["message"]
 
     def chat(self, messages):
         """Send the full message history and return the assistant's reply text."""
