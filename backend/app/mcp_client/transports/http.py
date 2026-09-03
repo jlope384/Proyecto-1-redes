@@ -13,16 +13,26 @@ class HttpTransport:
         self._pending_response = None
 
     def send(self, message):
-        response = requests.post(self.url, json=message, timeout=10)
-        response.raise_for_status()
+        try:
+            response = requests.post(self.url, json=message, timeout=10)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as exc:
+            raise ConnectionError(f"MCP server at {self.url} was unreachable: {exc}") from exc
         self._pending_response = response
 
     def receive(self):
         response = self._pending_response
         self._pending_response = None
         if response is None or not response.content:
-            return None
-        return response.json()
+            # A request expects a reply; an empty body means the server (or a proxy in
+            # front of it) sent no JSON-RPC message back, not a valid "no result".
+            raise ConnectionError(f"MCP server at {self.url} returned an empty response body")
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise ConnectionError(
+                f"MCP server at {self.url} sent a non-JSON response body: {response.text!r} ({exc})"
+            ) from exc
 
     def close(self):
         pass
