@@ -84,7 +84,11 @@ def handle_message(message):
         name = params.get("name")
         if name not in DISPATCH:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": f"Unknown tool: {name}"}}
-        result = _tool_call_result(name, params.get("arguments", {}))
+        # `params.get("arguments", {})` only falls back to {} when the key is absent - an
+        # explicit `"arguments": null` (valid JSON-RPC) would still pass None through and
+        # crash `_missing_required_arguments`'s `field not in arguments` with an uncaught
+        # TypeError, so normalize any falsy value (missing or null) to {} here instead.
+        result = _tool_call_result(name, params.get("arguments") or {})
     elif method == "resources/list":
         result = {"resources": _list_all_resources()}
     elif method == "resources/read":
@@ -98,7 +102,7 @@ def handle_message(message):
     elif method == "prompts/get":
         params = message.get("params", {})
         try:
-            result = sales_prompts.get_prompt(params.get("name"), params.get("arguments", {}))
+            result = sales_prompts.get_prompt(params.get("name"), params.get("arguments") or {})
         except ValueError as exc:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": str(exc)}}
     else:

@@ -143,6 +143,25 @@ def test_tools_call_generar_enlace_de_pago_rejects_non_positive_cantidad():
     assert "cantidad" in result["content"][0]["text"].lower()
 
 
+def test_tools_call_explicit_null_arguments_returns_tool_error_not_crash():
+    # `params.get("arguments", {})` only falls back to {} when the key is missing entirely -
+    # an explicit `"arguments": null` (valid JSON-RPC) previously reached
+    # `_missing_required_arguments`'s `field not in arguments` as a bare None, raising an
+    # uncaught TypeError that killed the whole server subprocess instead of a normal tool
+    # error.
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 46,
+            "method": "tools/call",
+            "params": {"name": "buscar_productos", "arguments": None},
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "query" in result["content"][0]["text"]
+
+
 def test_unknown_method_returns_json_rpc_error():
     response = handle_message({"jsonrpc": "2.0", "id": 5, "method": "not/a/method"})
     assert response["error"]["code"] == -32601
@@ -182,6 +201,20 @@ def test_prompts_get_missing_required_argument_returns_json_rpc_error():
         }
     )
     assert response["error"]["code"] == -32602
+
+
+def test_prompts_get_explicit_null_arguments_returns_json_rpc_error_not_crash():
+    # Same explicit-null gap as tools/call above, for the prompts/get path.
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 47,
+            "method": "prompts/get",
+            "params": {"name": "resumen_pedido", "arguments": None},
+        }
+    )
+    assert response["error"]["code"] == -32602
+    assert "pedido_id" in response["error"]["message"]
 
 
 def test_prompts_get_unknown_prompt_returns_json_rpc_error():
