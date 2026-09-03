@@ -250,6 +250,50 @@ Read this file at the start of every autonomous session and update the Status se
       a live `python -m app.main` + real Ollama session in this sandbox, for the usual reason
       (no `localhost:11434` here) — see "Needs verification" below.
 
+- [x] Re-checked both remaining backlog items again at the start of this session: still
+      genuinely blocked on the same things (a live Wireshark capture against a *remote*
+      deployment, and no real use case for a binary resource) — nothing new to implement
+      there, so this session did another focused code-review pass over `backend/`,
+      specifically the parts of the client/server stack the two previous review sessions
+      hadn't looked at as closely (the HTTP transport scaffold, and the JSON-RPC argument
+      normalization in `mcp_server_sales/core/server.py`). Found and fixed two more real,
+      previously-untested crash bugs:
+      1. `HttpTransport` (`app/mcp_client/transports/http.py`) let a `requests` network
+         failure (connection refused, timeout) or a 4xx/5xx status from `raise_for_status()`
+         propagate as an uncaught `requests.exceptions.RequestException`/`HTTPError` out of
+         `send()`, and `receive()` silently returned `None` on an empty response body
+         instead of raising — which then crashed the caller (`MCPClient._call`) with an
+         uncaught `TypeError` ("argument of type 'NoneType' is not iterable") rather than
+         the `ConnectionError` the rest of the client/host code already knows how to handle
+         (same contract `StdioTransport` already follows: `receive()` either returns a
+         parsed dict or raises `ConnectionError`, never `None`). This only matters once the
+         HTTP scaffold is used against a real network (the remote deployment, still
+         pending), so it hadn't been exercised by the existing real-socket HTTP tests,
+         which never hit a network failure or an empty body. Fixed `send()`/`receive()` to
+         catch `requests.exceptions.RequestException` and empty/non-JSON bodies and raise
+         `ConnectionError` instead. 5 new unit tests
+         (`tests/test_http_transport.py`, mocking `requests.post`), plus the existing
+         real-socket HTTP tests (`tests/test_mcp_server_sales_http.py`) still pass.
+      2. `mcp_server_sales/core/server.py`'s `handle_message`: both the `tools/call` and
+         `prompts/get` branches read `params.get("arguments", {})`, which only falls back
+         to `{}` when the `"arguments"` key is *absent* — a valid JSON-RPC request with an
+         explicit `"arguments": null` passed a bare `None` through to
+         `_missing_required_arguments`'s `field not in arguments` check, raising an
+         uncaught `TypeError` that crashed the whole `mcp-server-sales` subprocess, instead
+         of the normal validation error both paths already return for a missing/empty
+         arguments object. Our own `MCPClient`/host never sends an explicit null (it already
+         normalizes with `arguments or {}` on the client side), so this wasn't reachable
+         through the chatbot itself, but the server is a standalone JSON-RPC endpoint any
+         MCP-compliant client could call, and the assignment specifically asks for manual,
+         spec-correct protocol handling. Fixed both branches to normalize with
+         `params.get("arguments") or {}`. Two new regression tests in
+         `tests/test_mcp_server_sales.py`.
+      Both verified against the real `mcp_server_sales` subprocess via
+      `python -m app.demo_mcp_sales` (still runs correctly end-to-end) and the full suite
+      (97 tests, up from 90 at the start of this session, all passing). Neither fix could be
+      exercised through a live `python -m app.main` + real Ollama session in this sandbox,
+      for the usual reason (no `localhost:11434` here).
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
       section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
