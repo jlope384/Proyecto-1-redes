@@ -294,6 +294,56 @@ Read this file at the start of every autonomous session and update the Status se
       exercised through a live `python -m app.main` + real Ollama session in this sandbox,
       for the usual reason (no `localhost:11434` here).
 
+- [x] Re-checked both remaining backlog items again at the start of this session: still
+      genuinely blocked on the same things (a live Wireshark capture against a *remote*
+      deployment, and no real use case for a binary resource) — nothing new to implement
+      there, so this session did another focused code-review pass over `backend/` (via a
+      dedicated review agent covering the parts of the stack prior sessions' passes hadn't
+      focused on as closely: `app/chat/session.py`, `app/logging/interaction_logger.py`,
+      `mcp_server_sales/prompts/sales_prompts.py`, `mcp_server_sales/resources/*.py`,
+      `app/main.py`'s prompt-parsing and `--show-log` helpers, and `app/mcp_client/client.py`'s
+      handling of `tools/list`/`resources/list`/`resources/read`/`prompts/list` results).
+      Found and fixed four more real, previously-untested bugs, each with a regression test
+      verified to fail against the pre-fix code and pass after:
+      1. `mcp_server_sales/prompts/sales_prompts.py`'s `get_prompt` had no defensive except net
+         (unlike `tools/call`'s `_tool_call_result`), so a malformed `prompts/get` request with
+         `"arguments"` as a JSON array instead of an object (e.g. `["pedido_id"]"`, which passes
+         the naive `field not in arguments` membership check) raised an uncaught `TypeError`
+         from indexing a list and crashed the whole `mcp-server-sales` subprocess. Added the
+         same kind of `except (TypeError, KeyError, AttributeError)` net tools/call already has.
+      2. `mcp_server_sales/core/server.py`'s `resources/read` path (via
+         `resources/policies.py`'s dict-membership check) raised an uncaught `TypeError`
+         ("unhashable type") on a non-string `uri` (e.g. a JSON array/object), crashing the
+         subprocess instead of returning a normal JSON-RPC error. `_read_any_resource` now
+         also catches `TypeError`, same as it already did for `ValueError`.
+      3. `app/mcp_client/client.py`'s `list_tools`/`list_resources`/`read_resource`/
+         `list_prompts` all unconditionally indexed the result dict (e.g. `result["tools"]`) —
+         the same crash class already fixed for `tools/call` results in an earlier session, but
+         never extended to these. A connected server — including the official filesystem/git
+         servers, which are third-party code this project doesn't control — returning a result
+         missing the expected key (or no result at all) raised an uncaught `KeyError`/`TypeError`
+         during `ToolRegistry.register()` at startup. Now defaults to an empty list in each case.
+      4. `app/main.py`'s `parse_prompt_command` used a plain `text.startswith("/prompt")`, which
+         also matched an ordinary chat message that merely starts with those 7 characters (e.g.
+         "/prompted the wrong SKU, can you check?"), misparsing it as a prompt command named
+         "prompted" and silently swallowing the rest of the user's actual message. Now requires
+         the literal command word (`/prompt` alone, or followed by a space).
+      Also fixed a fifth bug found in the same pass, in `app/main.py`'s `--show-log` path:
+      `read_log_entries` called `json.loads` on every non-blank line with no guard, so a single
+      truncated/corrupted log line (e.g. the logger process killed mid-write) raised an
+      uncaught `JSONDecodeError` and hid every valid entry recorded before and after it. Now
+      yields a visible placeholder entry for that line instead of crashing. Verified manually
+      against a real corrupted log file, not just the unit test.
+      All five verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end) and the full suite (105 tests, up
+      from 97 at the start of this session, all passing).
+      Not fixed this session (noted for later, low priority): the review also flagged that
+      `app/logging/interaction_logger.py`'s `build_interaction_logger` uses a
+      `logging.getLogger(name)` singleton guarded by `if not logger.handlers`, so a *second*
+      call with a different `log_dir` silently keeps writing to the first call's file. Real, but
+      not reachable through the current codebase's actual usage (`app/main.py` only calls it
+      once per process) — left for a future session if a second call site ever gets added.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
       section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
@@ -313,6 +363,11 @@ from scratch every time; only re-check if something about the environment actual
 (e.g. the remote deployment gets done, or product images get added to the catalog).
 
 ### Needs verification by the student on their own machine
+- New this session: the `parse_prompt_command` fix (rejecting ordinary chat text that merely
+  starts with "/prompt") is unit-tested, but wasn't exercised through the actual interactive
+  `python -m app.main` loop for the same sandbox reason as the rest of this list. Worth typing a
+  real message starting with "/prompt" (that isn't meant as a command) during a live run to
+  confirm it now reaches the LLM normally instead of being swallowed.
 - New this session: the two crash fixes above (`handle_tool_calls`'s `extract_tool_result_text`,
   `OllamaClient.chat_raw`'s response-parsing guard) are unit-tested and the sales server was
   re-verified via `python -m app.demo_mcp_sales`, but neither was exercised through a live
