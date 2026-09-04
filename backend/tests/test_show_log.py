@@ -27,6 +27,23 @@ def test_read_log_entries_parses_json_lines_and_skips_blanks(tmp_path):
     ]
 
 
+def test_read_log_entries_yields_placeholder_for_malformed_line_instead_of_crashing(tmp_path):
+    log_path = tmp_path / "interactions.log"
+    log_path.write_text(
+        json.dumps({"source": "llm", "direction": "request", "payload": {}}) + "\n"
+        "not valid json at all\n"
+        + json.dumps({"source": "mcp:sales", "direction": "response", "payload": {"ok": True}}) + "\n",
+        encoding="utf-8",
+    )
+
+    entries = list(read_log_entries(log_path))
+
+    assert entries[0] == {"source": "llm", "direction": "request", "payload": {}}
+    assert entries[1]["source"] == "?"
+    assert "malformed log line" in entries[1]["payload"]
+    assert entries[2] == {"source": "mcp:sales", "direction": "response", "payload": {"ok": True}}
+
+
 def test_show_log_prints_each_entry(tmp_path):
     log_path = tmp_path / "interactions.log"
     log_path.write_text(

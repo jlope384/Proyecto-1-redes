@@ -203,12 +203,22 @@ def format_log_entry(entry):
 
 
 def read_log_entries(log_path):
-    """Yield parsed JSON entries from a JSON-lines interaction log, skipping blank lines."""
+    """Yield parsed JSON entries from a JSON-lines interaction log, skipping blank lines.
+
+    A single truncated/corrupted line (e.g. the log file's writer was killed mid-write) used to
+    raise an uncaught JSONDecodeError and make --show-log crash instead of showing every entry
+    recorded before it; such a line is now yielded as a placeholder entry instead of skipped
+    silently, so the corruption is visible rather than just an unexplained gap.
+    """
     with open(log_path, "r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
                 yield json.loads(line)
+            except json.JSONDecodeError:
+                yield {"source": "?", "direction": "?", "payload": f"<malformed log line: {line!r}>"}
 
 
 def show_log(log_path=None, out=sys.stdout):
