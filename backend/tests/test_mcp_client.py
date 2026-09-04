@@ -93,6 +93,39 @@ def test_call_raises_on_mismatched_response_id():
         client.list_tools()
 
 
+def test_list_tools_defaults_to_empty_list_on_missing_key():
+    # A third-party server (this project doesn't control the official filesystem/git servers'
+    # code) returning a tools/list result without a "tools" key used to raise an uncaught
+    # KeyError instead of just meaning "no tools".
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1, "result": {}}])
+    client = MCPClient(transport, server_name="sales")
+
+    assert client.list_tools() == []
+
+
+def test_list_resources_defaults_to_empty_list_on_null_result():
+    # A response with no "result" key at all makes parse_response return None, which used to
+    # raise an uncaught TypeError ("'NoneType' object is not subscriptable").
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1}])
+    client = MCPClient(transport, server_name="sales")
+
+    assert client.list_resources() == []
+
+
+def test_read_resource_defaults_to_empty_list_on_missing_key():
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1, "result": {}}])
+    client = MCPClient(transport, server_name="sales")
+
+    assert client.read_resource("policy://envio") == []
+
+
+def test_list_prompts_defaults_to_empty_list_on_missing_key():
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1, "result": {}}])
+    client = MCPClient(transport, server_name="sales")
+
+    assert client.list_prompts() == []
+
+
 def test_error_response_raises_mcp_protocol_error():
     transport = FakeTransport(
         [{"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "Method not found"}}]

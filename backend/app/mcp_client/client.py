@@ -50,8 +50,11 @@ class MCPClient:
         return result
 
     def list_tools(self):
+        # `result` is whatever a connected server sent back - including the official
+        # filesystem/git servers, which are third-party code this project doesn't control - so
+        # don't assume the expected key is present or that "result" itself isn't null/missing.
         result = self._call("tools/list")
-        return result["tools"]
+        return (result or {}).get("tools", [])
 
     def call_tool(self, name, arguments=None):
         result = self._call("tools/call", {"name": name, "arguments": arguments or {}})
@@ -59,15 +62,15 @@ class MCPClient:
 
     def list_resources(self):
         result = self._call("resources/list")
-        return result["resources"]
+        return (result or {}).get("resources", [])
 
     def read_resource(self, uri):
         result = self._call("resources/read", {"uri": uri})
-        return result["contents"]
+        return (result or {}).get("contents", [])
 
     def list_prompts(self):
         result = self._call("prompts/list")
-        return result["prompts"]
+        return (result or {}).get("prompts", [])
 
     def get_prompt(self, name, arguments=None):
         return self._call("prompts/get", {"name": name, "arguments": arguments or {}})
