@@ -33,6 +33,12 @@ def test_parse_prompt_command_returns_none_for_bare_slash_prompt():
     assert parse_prompt_command("/prompt") is None
 
 
+def test_parse_prompt_command_returns_none_for_message_merely_starting_with_prompt():
+    # A plain startswith("/prompt") check used to misparse this as the command name "prompted",
+    # silently swallowing the rest of the user's actual message.
+    assert parse_prompt_command("/prompted the wrong SKU, can you check?") is None
+
+
 def test_prompt_text_joins_message_contents():
     result = prompt_text({"description": "d", "messages": [{"role": "user", "content": {"type": "text", "text": "hola"}}]})
 

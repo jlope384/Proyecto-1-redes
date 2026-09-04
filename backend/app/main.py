@@ -95,7 +95,10 @@ def connect_mcp_servers(connectors):
 def parse_prompt_command(text):
     """Parse a `/prompt <name> [key=value ...]` line into (name, arguments), or None if `text`
     isn't a prompt command."""
-    if not text.startswith("/prompt"):
+    if text != "/prompt" and not text.startswith("/prompt "):
+        # A plain `startswith("/prompt")` also matched any ordinary chat message that
+        # happens to start with those 7 characters (e.g. "/prompted the wrong SKU..."),
+        # misparsing it as a prompt command and silently swallowing the user's real message.
         return None
     parts = text.split()[1:]
     if not parts:
