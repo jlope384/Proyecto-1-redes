@@ -34,6 +34,12 @@ def _read_any_resource(uri):
             return module.read_resource(uri)
         except ValueError:
             continue
+        except TypeError:
+            # A non-hashable uri (e.g. a JSON array/object instead of a string) makes each
+            # module's `uri not in {...}`/`uri != CATALOG_URI` check raise TypeError instead of
+            # just failing to match - treat it the same as "no module owns this uri" rather than
+            # letting it crash the whole server subprocess.
+            continue
     raise ValueError(f"Recurso desconocido: {uri}")
 
 

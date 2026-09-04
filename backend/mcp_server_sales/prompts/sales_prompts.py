@@ -67,8 +67,13 @@ def list_prompts():
 def get_prompt(name, arguments):
     if name not in PROMPT_SPECS_BY_NAME:
         raise ValueError(f"Prompt desconocido: {name}")
-    missing = _missing_required_arguments(name, arguments)
-    if missing:
-        raise ValueError(f"Faltan argumentos requeridos para {name}: {', '.join(missing)}")
-    description, messages = _BUILDERS[name](arguments)
+    try:
+        missing = _missing_required_arguments(name, arguments)
+        if missing:
+            raise ValueError(f"Faltan argumentos requeridos para {name}: {', '.join(missing)}")
+        description, messages = _BUILDERS[name](arguments)
+    except (TypeError, KeyError, AttributeError) as exc:
+        # Defensive net mirroring tools/call's: `arguments` being a list/int/etc instead of a
+        # dict (e.g. a malformed prompts/get request) must not crash the whole server subprocess.
+        raise ValueError(f"Argumentos invalidos para {name}: {exc}") from exc
     return {"description": description, "messages": messages}

@@ -217,6 +217,20 @@ def test_prompts_get_explicit_null_arguments_returns_json_rpc_error_not_crash():
     assert "pedido_id" in response["error"]["message"]
 
 
+def test_prompts_get_list_arguments_returns_json_rpc_error_not_crash():
+    # A malformed prompts/get request with a JSON array instead of an object for "arguments"
+    # used to raise an uncaught TypeError from `arguments["pedido_id"]` indexing a list.
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 48,
+            "method": "prompts/get",
+            "params": {"name": "resumen_pedido", "arguments": ["pedido_id"]},
+        }
+    )
+    assert response["error"]["code"] == -32602
+
+
 def test_prompts_get_unknown_prompt_returns_json_rpc_error():
     response = handle_message(
         {
@@ -255,5 +269,14 @@ def test_resources_read_catalog_returns_parseable_json_matching_products():
 def test_resources_read_unknown_uri_returns_json_rpc_error():
     response = handle_message(
         {"jsonrpc": "2.0", "id": 14, "method": "resources/read", "params": {"uri": "policy://no-existe"}}
+    )
+    assert response["error"]["code"] == -32602
+
+
+def test_resources_read_unhashable_uri_returns_json_rpc_error_not_crash():
+    # A malformed resources/read request with a JSON array/object instead of a string "uri"
+    # used to raise an uncaught TypeError ("unhashable type") from `uri not in POLICIES`.
+    response = handle_message(
+        {"jsonrpc": "2.0", "id": 15, "method": "resources/read", "params": {"uri": ["policy://envio"]}}
     )
     assert response["error"]["code"] == -32602
