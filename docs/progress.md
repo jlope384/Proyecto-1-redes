@@ -344,6 +344,46 @@ Read this file at the start of every autonomous session and update the Status se
       not reachable through the current codebase's actual usage (`app/main.py` only calls it
       once per process) — left for a future session if a second call site ever gets added.
 
+- [x] Re-checked both remaining backlog items again at the start of this session: still
+      genuinely blocked on the same things (a live Wireshark capture against a *remote*
+      deployment, and no real use case for a binary resource) — nothing new to implement
+      there, so this session did another focused code-review pass over `backend/`, this time
+      targeting parts prior sessions' passes hadn't covered as closely: the previously-untested
+      `app/logging/interaction_logger.py` module, `mcp_server_sales/core/server.py`'s top-level
+      `handle_message`/`serve()` dispatch loop itself (as opposed to individual tool/prompt/
+      resource handlers, which earlier sessions already hardened), and the HTTP transport
+      scaffold. Found and fixed three more real, previously-untested bugs, each with a
+      regression test verified to fail against the pre-fix code and pass after:
+      1. `build_interaction_logger`'s `logging.getLogger(name)` singleton was keyed by `name`
+         only, so a second call with a *different* `log_dir` (same default `name`) silently
+         kept writing to the first call's file instead of the new one — a real bug flagged (but
+         not fixed) by a previous session's review as "not reachable through current usage".
+         Fixed by keying the logger by `name` + resolved `log_dir` together. This module had no
+         dedicated test file before; added `tests/test_interaction_logger.py`.
+      2. `handle_message` called `message.get(...)` unconditionally; a syntactically valid JSON
+         document that isn't an object at all (a bare list/string/number — legal JSON, illegal
+         JSON-RPC) raised an uncaught `AttributeError` instead of a normal protocol error.
+         Separately, `serve()`'s stdio loop called `json.loads(line)` with no guard, so a
+         non-JSON line on stdin raised an uncaught `JSONDecodeError`. Either killed the whole
+         `mcp-server-sales` subprocess. Fixed both: `handle_message` now returns a JSON-RPC
+         `-32600 Invalid Request` for a non-dict message, and `serve()` catches malformed JSON
+         and emits a `-32700 Parse error` response before continuing the loop. New test file
+         `tests/test_mcp_server_sales_serve.py` exercises `serve()` itself (monkeypatched
+         stdin/stdout) — nothing had unit-tested the loop directly before, only `handle_message`.
+      3. Same crash class, one level up: `tools/call`, `resources/read`, and `prompts/get` all
+         read `params = message.get("params", {})`, which only falls back to `{}` when the key
+         is *absent* — a valid request with e.g. `"params": "foo"` (or a list/number) passed a
+         non-dict straight into `params.get(...)`, raising an uncaught `AttributeError`. This is
+         the same shape of bug an earlier session already fixed one level deeper (explicit
+         `"arguments": null`), just not caught at the `params` level itself. Added a shared
+         `_params()` helper that normalizes any non-dict `params` to `{}`, used by all three
+         methods.
+      All three verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end after each fix) and the full suite
+      (111 tests, up from 105 at the start of this session, all passing). None needed live
+      Ollama - these are pure server/logging-module bugs with no LLM in the loop, so nothing new
+      to add to "Needs verification" below.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
       section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
