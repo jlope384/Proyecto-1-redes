@@ -10,7 +10,11 @@ DEFAULT_LOG_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..",
 def build_interaction_logger(log_dir=None, name="interactions"):
     log_dir = log_dir or DEFAULT_LOG_DIR
     os.makedirs(log_dir, exist_ok=True)
-    logger = logging.getLogger(name)
+    # Key the logging.getLogger() singleton by the resolved log_dir too, not just
+    # `name`: otherwise a second call with a different log_dir (same `name`) would
+    # silently reuse the first call's handler/file instead of logging to the new one.
+    logger_key = f"{__name__}.{name}.{os.path.abspath(log_dir)}"
+    logger = logging.getLogger(logger_key)
     if not logger.handlers:
         logger.setLevel(logging.INFO)
         handler = logging.FileHandler(os.path.join(log_dir, f"{name}.log"), encoding="utf-8")
