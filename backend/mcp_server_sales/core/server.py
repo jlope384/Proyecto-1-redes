@@ -69,6 +69,16 @@ def _tool_call_result(name, arguments):
         return {"content": [{"type": "text", "text": f"Argumentos invalidos para {name}: {exc}"}], "isError": True}
 
 
+def _params(message):
+    """A valid JSON-RPC request may omit "params" or set it to anything the sender likes -
+    the spec only requires it to be a structured value (object or array) when present, but
+    every method here expects an object. Normalize a missing/non-dict "params" (e.g. a
+    string, list, or number, all of which used to crash with an uncaught AttributeError on
+    the `.get(...)` call below) to {} instead."""
+    params = message.get("params")
+    return params if isinstance(params, dict) else {}
+
+
 def handle_message(message):
     """Given one parsed JSON-RPC request, return the response dict, or None for notifications."""
     if not isinstance(message, dict):
@@ -93,7 +103,7 @@ def handle_message(message):
     elif method == "tools/list":
         result = {"tools": TOOL_SPECS}
     elif method == "tools/call":
-        params = message.get("params", {})
+        params = _params(message)
         name = params.get("name")
         if name not in DISPATCH:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": f"Unknown tool: {name}"}}
@@ -105,7 +115,7 @@ def handle_message(message):
     elif method == "resources/list":
         result = {"resources": _list_all_resources()}
     elif method == "resources/read":
-        uri = message.get("params", {}).get("uri")
+        uri = _params(message).get("uri")
         try:
             result = {"contents": _read_any_resource(uri)}
         except ValueError as exc:
@@ -113,7 +123,7 @@ def handle_message(message):
     elif method == "prompts/list":
         result = {"prompts": sales_prompts.list_prompts()}
     elif method == "prompts/get":
-        params = message.get("params", {})
+        params = _params(message)
         try:
             result = sales_prompts.get_prompt(params.get("name"), params.get("arguments") or {})
         except ValueError as exc:

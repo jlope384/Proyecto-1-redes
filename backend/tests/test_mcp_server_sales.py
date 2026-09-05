@@ -174,6 +174,14 @@ def test_non_dict_message_returns_invalid_request_error_not_crash():
         assert response["id"] is None
 
 
+def test_non_dict_params_does_not_crash_tools_call_resources_read_or_prompts_get():
+    # "params" is present (so the earlier params.get("...", {}) fallback never kicked in)
+    # but isn't an object - a string/list/number, all valid JSON, none of them a dict.
+    for method in ["tools/call", "resources/read", "prompts/get"]:
+        response = handle_message({"jsonrpc": "2.0", "id": 1, "method": method, "params": "not-an-object"})
+        assert "error" in response or response["result"].get("isError") is True
+
+
 def test_initialize_advertises_prompts_capability():
     response = handle_message({"jsonrpc": "2.0", "id": 7, "method": "initialize", "params": {}})
     assert "prompts" in response["result"]["capabilities"]
