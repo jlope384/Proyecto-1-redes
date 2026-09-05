@@ -71,6 +71,13 @@ def _tool_call_result(name, arguments):
 
 def handle_message(message):
     """Given one parsed JSON-RPC request, return the response dict, or None for notifications."""
+    if not isinstance(message, dict):
+        # A syntactically valid JSON document that isn't a JSON-RPC request object at all
+        # (e.g. a bare list/string/number) crashed with an uncaught AttributeError on
+        # `message.get(...)` below instead of returning a normal protocol error. No request
+        # id is recoverable from a non-object message, per the JSON-RPC 2.0 spec.
+        return {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid Request"}}
+
     method = message.get("method")
     request_id = message.get("id")
 
@@ -122,7 +129,16 @@ def serve():
         line = line.strip()
         if not line:
             continue
-        message = json.loads(line)
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            # A malformed line on stdin (e.g. a client bug, or a stray non-JSON write)
+            # used to raise uncaught here and kill the whole subprocess. Report it as a
+            # normal JSON-RPC parse error and keep serving instead.
+            error = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
+            sys.stdout.write(json.dumps(error, ensure_ascii=False) + "\n")
+            sys.stdout.flush()
+            continue
         response = handle_message(message)
         if response is not None:
             sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")

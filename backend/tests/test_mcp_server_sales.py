@@ -167,6 +167,13 @@ def test_unknown_method_returns_json_rpc_error():
     assert response["error"]["code"] == -32601
 
 
+def test_non_dict_message_returns_invalid_request_error_not_crash():
+    for message in [[1, 2, 3], "hello", 42, None]:
+        response = handle_message(message)
+        assert response["error"]["code"] == -32600
+        assert response["id"] is None
+
+
 def test_initialize_advertises_prompts_capability():
     response = handle_message({"jsonrpc": "2.0", "id": 7, "method": "initialize", "params": {}})
     assert "prompts" in response["result"]["capabilities"]
