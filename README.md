@@ -48,13 +48,17 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
   (see `docs/progress.md`), and the chatbot in `app/main.py` still uses stdio for all three
   servers.
 
-- **Terminal UI (extra credit, in progress)**: `backend/app/ui/console.py` renders the chatbot
-  through [`rich`](https://github.com/Textualize/rich) instead of plain `print()`: the user prompt,
-  bot replies (boxed in their own panel), background MCP tool-call activity, errors and the startup
+- **Terminal UI (extra credit)**: `backend/app/ui/console.py` renders the chatbot through
+  [`rich`](https://github.com/Textualize/rich) instead of plain `print()`: the user prompt, bot
+  replies (boxed in their own panel), background MCP tool-call activity, errors and the startup
   banner each get a fixed color chosen for visual hierarchy, following standard color-psychology
   conventions (cyan = user input, green = the bot's actual answer, dim yellow = secondary/
-  in-progress tool activity, red = errors, blue = system info). Tool calls are now also visibly
-  announced before they run, which previously happened silently.
+  in-progress tool activity, red = errors, blue = system info). Tool calls are visibly announced
+  before they run and their result is also shown to the user (truncated to 200 chars), not just
+  fed back to the LLM. A "Thinking..." spinner covers the wait on a (possibly slow) local LLM
+  call. Verified under a real pseudo-tty at both a normal and a narrow (40-column) terminal
+  width. `python -m app.demo_mcp_sales` gets the same light-touch treatment (a bold label per
+  JSON-RPC step), since it's meant to be read directly rather than piped.
 
 More features (remote deployment, Wireshark analysis) will be added incrementally as the project
 progresses — see `docs/progress.md` for the live backlog.
