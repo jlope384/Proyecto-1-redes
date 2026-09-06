@@ -137,8 +137,19 @@ def extract_tool_result_text(result):
 
 def handle_tool_calls(registry, tool_calls, session, logger):
     for call in tool_calls:
-        name = call["function"]["name"]
-        arguments = call["function"]["arguments"]
+        try:
+            name = call["function"]["name"]
+        except (KeyError, TypeError) as exc:
+            # A tool_calls entry from the LLM that doesn't even have a usable function name
+            # (e.g. a malformed/truncated generation missing "function" or "name") used to
+            # raise an uncaught KeyError/TypeError here and kill the whole chatbot session,
+            # before a tool name even existed to report the error under.
+            log_interaction(logger, "mcp", "error", {"call": call, "error": str(exc)})
+            render_error(f"Malformed tool call from the model: {exc}")
+            continue
+        # `arguments` is only guaranteed present for a well-formed call; a tool with no
+        # required arguments could plausibly come back without the key at all.
+        arguments = call["function"].get("arguments") or {}
         try:
             client = registry.client_for(name)
         except UnknownToolError as exc:

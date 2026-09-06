@@ -151,6 +151,39 @@ def test_handle_tool_calls_survives_non_text_content_result(capsys):
     assert "image" in session.messages[-1]["content"]
 
 
+def test_handle_tool_calls_survives_tool_call_missing_arguments_key(capsys):
+    # Ollama's tool-calling format is expected to always include "arguments", but the model
+    # is an external, uncontrolled system - a malformed/truncated generation missing the key
+    # entirely used to raise an uncaught KeyError and kill the whole session before this was
+    # fixed, the same way a missing "content" item or a hallucinated tool name already did.
+    client = FakeClient(
+        "sales",
+        [{"name": "buscar_productos", "description": "d", "inputSchema": {}}],
+        result={"content": [{"type": "text", "text": "3 productos encontrados"}]},
+    )
+    registry = make_registry(client)
+    session = ChatSession()
+    logger = logging.getLogger("test-handle-tool-calls-missing-arguments")
+
+    handle_tool_calls(registry, [{"function": {"name": "buscar_productos"}}], session, logger)
+
+    assert client.calls == [("buscar_productos", {})]
+    assert session.messages[-1]["role"] == "tool"
+
+
+def test_handle_tool_calls_survives_tool_call_missing_function_key(capsys):
+    registry = make_registry(
+        FakeClient("sales", [{"name": "buscar_productos", "description": "d", "inputSchema": {}}])
+    )
+    session = ChatSession()
+    logger = logging.getLogger("test-handle-tool-calls-missing-function")
+
+    handle_tool_calls(registry, [{}], session, logger)
+
+    assert "[error]" in capsys.readouterr().out
+    assert session.messages == []
+
+
 def test_extract_tool_result_text_joins_multiple_text_items():
     result = {"content": [{"type": "text", "text": "linea 1"}, {"type": "text", "text": "linea 2"}]}
     assert extract_tool_result_text(result) == "linea 1\nlinea 2"
