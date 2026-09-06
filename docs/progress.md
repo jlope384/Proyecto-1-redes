@@ -384,6 +384,50 @@ Read this file at the start of every autonomous session and update the Status se
       Ollama - these are pure server/logging-module bugs with no LLM in the loop, so nothing new
       to add to "Needs verification" below.
 
+- [x] Re-checked both remaining backlog items again at the start of this session: still
+      genuinely blocked on the same things (a live Wireshark capture against a *remote*
+      deployment, and no real use case for a binary resource) — per this file's own note that a
+      future session shouldn't need to re-verify this from scratch every time, did not re-run
+      the Docker-daemon check either (already established as an inherent sandbox restriction).
+      Instead ran a coverage-guided pass (`coverage run -m pytest` + `coverage report -m`) to
+      find genuinely untested code paths, rather than re-reading files a review agent had
+      already covered several times. Found and fixed three real things:
+      1. `mcp_server_sales/tools/sales_tools.py` (58% covered) and
+         `mcp_server_sales/prompts/sales_prompts.py` (81% covered): the success paths of
+         `consultar_pedido`, `recomendar_complementos`, `generar_enlace_de_pago`, and the
+         `recomendar_outfit` prompt had never been asserted by the test suite — only exercised
+         manually via `demo_mcp_sales.py`, or (for `generar_enlace_de_pago`) only through its
+         rejection paths. Manually exercised all four to confirm the actual behavior was
+         correct, then added 11 new regression tests via `handle_message`/`prompts/get`
+         (`tests/test_mcp_server_sales.py`) plus one for `http_server.py`'s previously-untested
+         invalid-JSON-body 400 response (`tests/test_mcp_server_sales_http.py`). Both files are
+         now at 100% coverage.
+      2. Found a real, previously-unfound crash bug while writing the tests above and cross-
+         checking `handle_tool_calls` against them: it read `call["function"]["name"]` and
+         `call["function"]["arguments"]` unconditionally from each `tool_calls` entry Ollama
+         returns. Ollama's normal format always includes both, but — same reasoning this
+         project has already applied to malformed MCP server output (a hallucinated tool name,
+         an empty `content` list, a non-text content item) — the model is an external system
+         this project doesn't control, and a malformed/truncated generation missing either key
+         raised an uncaught `KeyError` that killed the whole interactive session before the
+         error was even logged. Reproduced the crash manually first, then fixed it: a missing
+         `function`/`name` is now caught and reported like the other tool-call failure modes,
+         and a missing `arguments` key defaults to `{}` instead of crashing. Two new regression
+         tests in `tests/test_handle_tool_calls.py`, confirmed to fail against the pre-fix code
+         and pass after (checked by temporarily reverting the fix and re-running).
+      3. `README.md`'s terminal-UI section still said "extra credit, in progress", but that
+         work (plus its three follow-ups: tool results shown to the user, narrow-terminal
+         readability check, demo script styling) was actually completed several sessions ago
+         per this file's own Done log. Fixed the README to describe what's actually
+         implemented, since documentation accuracy is graded directly.
+      All three verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end) and the full suite (124 tests, up
+      from 111 at the start of this session, all passing). None needed live Ollama — the new
+      crash fix is unit-tested with a fake LLM-shaped `tool_calls` payload, the same pattern
+      `tests/test_handle_tool_calls.py` already used for the other failure modes; still worth a
+      look during a live run in case a real model ever actually produces a malformed tool call
+      (added to "Needs verification" below).
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
       section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
@@ -403,6 +447,12 @@ from scratch every time; only re-check if something about the environment actual
 (e.g. the remote deployment gets done, or product images get added to the catalog).
 
 ### Needs verification by the student on their own machine
+- New this session: the `handle_tool_calls` fix for a `tool_calls` entry missing
+  `function`/`name`/`arguments` is unit-tested with a fake payload shaped like Ollama's format,
+  but wasn't (and, by nature, can't reliably be) triggered by a real model during a live run —
+  it depends on the model actually producing a malformed tool call. Not something to go chasing
+  on purpose, just worth knowing about: if a live session ever prints `[error] Malformed tool
+  call from the model: ...` instead of crashing outright, that's this fix working as intended.
 - New this session: the `parse_prompt_command` fix (rejecting ordinary chat text that merely
   starts with "/prompt") is unit-tested, but wasn't exercised through the actual interactive
   `python -m app.main` loop for the same sandbox reason as the rest of this list. Worth typing a
