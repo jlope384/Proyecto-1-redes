@@ -49,6 +49,17 @@ def test_unknown_path_returns_404(http_server):
     assert response.status_code == 404
 
 
+def test_invalid_json_body_returns_400(http_server):
+    response = requests.post(
+        http_server + RPC_PATH,
+        data=b"not json",
+        headers={"Content-Type": "application/json"},
+        timeout=5,
+    )
+
+    assert response.status_code == 400
+
+
 def test_mcp_client_drives_full_handshake_and_tool_call_over_http(http_server):
     transport = HttpTransport(http_server)
     client = MCPClient(transport, server_name="sales")

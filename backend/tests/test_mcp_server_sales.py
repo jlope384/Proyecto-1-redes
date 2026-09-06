@@ -162,6 +162,134 @@ def test_tools_call_explicit_null_arguments_returns_tool_error_not_crash():
     assert "query" in result["content"][0]["text"]
 
 
+def test_tools_call_consultar_inventario_returns_stock_by_size():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 50,
+            "method": "tools/call",
+            "params": {"name": "consultar_inventario", "arguments": {"sku": "CAM-001"}},
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is False
+    payload = json.loads(result["content"][0]["text"])
+    assert payload == {"sku": "CAM-001", "stock_por_talla": {"S": 5, "M": 12, "L": 8, "XL": 0}}
+
+
+def test_tools_call_consultar_pedido_returns_order_details():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 51,
+            "method": "tools/call",
+            "params": {"name": "consultar_pedido", "arguments": {"pedido_id": "PED-1001"}},
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is False
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["estado"] == "enviado"
+    assert payload["items"][0]["sku"] == "CAM-001"
+
+
+def test_tools_call_consultar_pedido_unknown_id_returns_tool_error_not_crash():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 52,
+            "method": "tools/call",
+            "params": {"name": "consultar_pedido", "arguments": {"pedido_id": "PED-9999"}},
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "PED-9999" in result["content"][0]["text"]
+
+
+def test_tools_call_recomendar_complementos_returns_matching_products():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 53,
+            "method": "tools/call",
+            "params": {"name": "recomendar_complementos", "arguments": {"sku": "CAM-001"}},
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is False
+    payload = json.loads(result["content"][0]["text"])
+    assert {p["sku"] for p in payload} == {"COR-003", "CIN-004"}
+
+
+def test_tools_call_recomendar_complementos_unknown_sku_returns_tool_error_not_crash():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 54,
+            "method": "tools/call",
+            "params": {"name": "recomendar_complementos", "arguments": {"sku": "NOPE"}},
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "NOPE" in result["content"][0]["text"]
+
+
+def test_tools_call_generar_enlace_de_pago_returns_checkout_link():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 55,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                "arguments": {"sku": "CAM-001", "talla": "M", "cantidad": 2},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is False
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["total"] == 498.0
+    assert payload["requiere_confirmacion_cliente"] is True
+    assert payload["enlace_pago"].endswith("CAM-001-M-2")
+
+
+def test_tools_call_generar_enlace_de_pago_unknown_sku_returns_tool_error_not_crash():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 56,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                "arguments": {"sku": "NOPE", "talla": "M", "cantidad": 1},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "NOPE" in result["content"][0]["text"]
+
+
+def test_tools_call_generar_enlace_de_pago_rejects_quantity_over_stock():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 57,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                "arguments": {"sku": "CIN-004", "talla": "UNICA", "cantidad": 1},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "Stock insuficiente" in result["content"][0]["text"]
+
+
 def test_unknown_method_returns_json_rpc_error():
     response = handle_message({"jsonrpc": "2.0", "id": 5, "method": "not/a/method"})
     assert response["error"]["code"] == -32601
@@ -204,6 +332,39 @@ def test_prompts_get_resumen_pedido_fills_argument():
     )
     result = response["result"]
     assert "PED-1001" in result["messages"][0]["content"]["text"]
+
+
+def test_prompts_get_recomendar_outfit_includes_ocasion_and_presupuesto():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "prompts/get",
+            "params": {
+                "name": "recomendar_outfit",
+                "arguments": {"ocasion": "boda", "presupuesto": "500"},
+            },
+        }
+    )
+    result = response["result"]
+    text = result["messages"][0]["content"]["text"]
+    assert "boda" in text
+    assert "Q500" in text
+
+
+def test_prompts_get_recomendar_outfit_without_optional_presupuesto():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "prompts/get",
+            "params": {"name": "recomendar_outfit", "arguments": {"ocasion": "entrevista"}},
+        }
+    )
+    result = response["result"]
+    text = result["messages"][0]["content"]["text"]
+    assert "entrevista" in text
+    assert "Q" not in text
 
 
 def test_prompts_get_missing_required_argument_returns_json_rpc_error():
