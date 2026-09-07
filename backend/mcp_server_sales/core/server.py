@@ -105,7 +105,15 @@ def handle_message(message):
     elif method == "tools/call":
         params = _params(message)
         name = params.get("name")
-        if name not in DISPATCH:
+        try:
+            known_tool = name in DISPATCH
+        except TypeError:
+            # A non-hashable "name" (e.g. a JSON array/object instead of a string) makes
+            # `name in DISPATCH` raise TypeError instead of just failing to match - same
+            # unhashable-value crash class already fixed for resources/read's "uri", just not
+            # caught here yet. Treat it as simply an unknown tool rather than crashing.
+            known_tool = False
+        if not known_tool:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": f"Unknown tool: {name}"}}
         # `params.get("arguments", {})` only falls back to {} when the key is absent - an
         # explicit `"arguments": null` (valid JSON-RPC) would still pass None through and

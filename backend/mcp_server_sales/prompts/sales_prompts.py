@@ -65,7 +65,14 @@ def list_prompts():
 
 
 def get_prompt(name, arguments):
-    if name not in PROMPT_SPECS_BY_NAME:
+    try:
+        known_prompt = name in PROMPT_SPECS_BY_NAME
+    except TypeError:
+        # Same unhashable-value crash class as tools/call's "name" and resources/read's
+        # "uri": a JSON array/object instead of a string makes `name in {...}` raise
+        # TypeError instead of just failing to match. Treat it as an unknown prompt.
+        known_prompt = False
+    if not known_prompt:
         raise ValueError(f"Prompt desconocido: {name}")
     try:
         missing = _missing_required_arguments(name, arguments)

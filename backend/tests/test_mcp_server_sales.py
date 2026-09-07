@@ -456,3 +456,32 @@ def test_resources_read_unhashable_uri_returns_json_rpc_error_not_crash():
         {"jsonrpc": "2.0", "id": 15, "method": "resources/read", "params": {"uri": ["policy://envio"]}}
     )
     assert response["error"]["code"] == -32602
+
+
+def test_tools_call_unhashable_name_returns_json_rpc_error_not_crash():
+    # Same unhashable-value crash class as resources/read's "uri": a malformed tools/call
+    # request with a JSON array instead of a string "name" used to raise an uncaught
+    # TypeError ("unhashable type") from `name not in DISPATCH`.
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 16,
+            "method": "tools/call",
+            "params": {"name": ["buscar_productos"], "arguments": {}},
+        }
+    )
+    assert response["error"]["code"] == -32602
+
+
+def test_prompts_get_unhashable_name_returns_json_rpc_error_not_crash():
+    # Same unhashable-value crash class, for prompts/get's "name": `name not in
+    # PROMPT_SPECS_BY_NAME` used to raise an uncaught TypeError on a JSON array/object.
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 17,
+            "method": "prompts/get",
+            "params": {"name": ["recomendar_outfit"], "arguments": {}},
+        }
+    )
+    assert response["error"]["code"] == -32602
