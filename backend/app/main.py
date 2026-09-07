@@ -147,9 +147,14 @@ def handle_tool_calls(registry, tool_calls, session, logger):
             log_interaction(logger, "mcp", "error", {"call": call, "error": str(exc)})
             render_error(f"Malformed tool call from the model: {exc}")
             continue
-        # `arguments` is only guaranteed present for a well-formed call; a tool with no
-        # required arguments could plausibly come back without the key at all.
-        arguments = call["function"].get("arguments") or {}
+        # `arguments` is only guaranteed present, and shaped as an object, for a well-formed
+        # call. A tool with no required arguments could plausibly come back without the key at
+        # all, and a malformed/truncated generation could put a non-object value there (e.g. a
+        # JSON array) - either used to reach `render_tool_call`'s `arguments.items()` below with
+        # something that isn't a dict, raising an uncaught AttributeError. Normalize both cases
+        # to {} instead of crashing the session.
+        raw_arguments = call["function"].get("arguments")
+        arguments = raw_arguments if isinstance(raw_arguments, dict) else {}
         try:
             client = registry.client_for(name)
         except UnknownToolError as exc:

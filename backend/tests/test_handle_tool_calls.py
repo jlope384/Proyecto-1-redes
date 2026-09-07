@@ -171,6 +171,28 @@ def test_handle_tool_calls_survives_tool_call_missing_arguments_key(capsys):
     assert session.messages[-1]["role"] == "tool"
 
 
+def test_handle_tool_calls_survives_tool_call_with_non_dict_arguments(capsys):
+    # A malformed/truncated generation could put a non-object value in "arguments" (e.g. a
+    # JSON array instead of {"query": "camisa"}). `render_tool_call`'s `arguments.items()`
+    # used to raise an uncaught AttributeError on anything but a dict, killing the whole
+    # session before the tool call itself was even attempted.
+    client = FakeClient(
+        "sales",
+        [{"name": "buscar_productos", "description": "d", "inputSchema": {}}],
+        result={"content": [{"type": "text", "text": "3 productos encontrados"}]},
+    )
+    registry = make_registry(client)
+    session = ChatSession()
+    logger = logging.getLogger("test-handle-tool-calls-non-dict-arguments")
+
+    handle_tool_calls(
+        registry, [{"function": {"name": "buscar_productos", "arguments": ["camisa"]}}], session, logger
+    )
+
+    assert client.calls == [("buscar_productos", {})]
+    assert session.messages[-1]["role"] == "tool"
+
+
 def test_handle_tool_calls_survives_tool_call_missing_function_key(capsys):
     registry = make_registry(
         FakeClient("sales", [{"name": "buscar_productos", "description": "d", "inputSchema": {}}])
