@@ -54,11 +54,15 @@ class ToolRegistry:
     def client_for(self, tool_name):
         try:
             return self._clients_by_tool[tool_name]
-        except KeyError:
+        except (KeyError, TypeError):
+            # TypeError covers a non-hashable tool_name (e.g. a JSON array/object) - the LLM's
+            # tool_calls payload is external, model-generated data this project doesn't
+            # control, same reasoning as the unhashable "name"/"uri" crashes already fixed in
+            # mcp_server_sales. Report it as an unknown tool instead of crashing the session.
             raise UnknownToolError(f"Unknown tool: {tool_name}") from None
 
     def client_for_prompt(self, prompt_name):
         try:
             return self._clients_by_prompt[prompt_name]
-        except KeyError:
+        except (KeyError, TypeError):
             raise UnknownPromptError(f"Unknown prompt: {prompt_name}") from None

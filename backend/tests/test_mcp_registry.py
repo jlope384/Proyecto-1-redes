@@ -6,6 +6,7 @@ from app.mcp_client.registry import (
     DuplicateToolError,
     ToolRegistry,
     UnknownPromptError,
+    UnknownToolError,
 )
 
 
@@ -89,3 +90,25 @@ def test_register_rejects_duplicate_prompt_names_across_servers():
 
     with pytest.raises(DuplicatePromptError):
         registry.register(b)
+
+
+def test_client_for_unhashable_tool_name_raises_unknown_tool_error_not_crash():
+    # A malformed/hallucinated LLM tool call can put anything JSON-shaped in "name" - a list
+    # or dict instead of a string made `self._clients_by_tool[tool_name]` raise an uncaught
+    # TypeError ("unhashable type") instead of the KeyError this method already handles,
+    # which propagated straight through handle_tool_calls's `except UnknownToolError` and
+    # crashed the whole chatbot session. Same crash class already fixed for the sales
+    # server's own "name"/"uri" lookups.
+    registry = ToolRegistry()
+    registry.register(FakeClient("sales", [{"name": "buscar_productos", "description": "d", "inputSchema": {}}]))
+
+    with pytest.raises(UnknownToolError):
+        registry.client_for(["buscar_productos"])
+
+
+def test_client_for_prompt_unhashable_name_raises_unknown_prompt_error_not_crash():
+    registry = ToolRegistry()
+    registry.register(FakeClient("sales", [], prompts=[{"name": "resumen_pedido"}]))
+
+    with pytest.raises(UnknownPromptError):
+        registry.client_for_prompt(["resumen_pedido"])
