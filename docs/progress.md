@@ -428,6 +428,57 @@ Read this file at the start of every autonomous session and update the Status se
       look during a live run in case a real model ever actually produces a malformed tool call
       (added to "Needs verification" below).
 
+- [x] Re-checked both remaining backlog items again at the start of this session: still
+      genuinely blocked on the same things (a live Wireshark capture against a *remote*
+      deployment, and no real use case for a binary resource) — nothing new to implement
+      there, so this session did another focused code-review/coverage pass over `backend/`
+      and found and fixed three more real, previously-untested crash bugs, all the same
+      "untrusted external input reaches a lookup/attribute access that assumes a specific
+      shape" class earlier sessions already found several instances of, just not these three:
+      1. `mcp_server_sales/core/server.py`'s `tools/call` (`name not in DISPATCH`) and
+         `mcp_server_sales/prompts/sales_prompts.py`'s `get_prompt`
+         (`name not in PROMPT_SPECS_BY_NAME`) both raised an uncaught `TypeError` ("unhashable
+         type") on a JSON array/object instead of a string `name`, crashing the whole
+         `mcp-server-sales` subprocess — the exact same crash class already fixed for
+         `resources/read`'s `uri` in an earlier session, just not extended to these two other
+         lookups. Fixed both to catch `TypeError` and treat it as "unknown tool"/"unknown
+         prompt" like any other non-match. Two new regression tests
+         (`tests/test_mcp_server_sales.py`), confirmed to fail against the pre-fix code.
+      2. Same crash class one layer up, client-side: `ToolRegistry.client_for`/
+         `client_for_prompt` (`app/mcp_client/registry.py`) only caught `KeyError`, so a
+         non-hashable `name` in the LLM's own `tool_calls` payload (a list/dict instead of a
+         string — plausible from a malformed/hallucinated generation, the same reasoning
+         already applied to a missing `function`/`name`/`arguments` key in an earlier session)
+         raised an uncaught `TypeError` that propagated straight through
+         `handle_tool_calls`'s `except UnknownToolError` and killed the whole chatbot session.
+         Fixed by also catching `TypeError`. Two new regression tests
+         (`tests/test_mcp_registry.py`), plus a manual end-to-end check through the real
+         `handle_tool_calls` call path confirming the session now reports a normal `[error]`
+         line instead of crashing.
+      3. `handle_tool_calls` (`app/main.py`) only fell back to `{}` when a tool call's
+         `"arguments"` key was *absent* (falsy) — a malformed generation with a non-object
+         value there (e.g. a JSON array) passed straight through to
+         `render_tool_call(name, arguments)`, whose `arguments.items()` raised an uncaught
+         `AttributeError` before the tool was even called, crashing the session. Normalized any
+         non-dict `arguments` value to `{}`. New regression test in
+         `tests/test_handle_tool_calls.py`, confirmed to fail against the pre-fix code with the
+         exact predicted `AttributeError`.
+      All three verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end) and the full suite (129 tests, up
+      from 126 at the start of this session, all passing). None needed live Ollama — all three
+      are pure lookup/attribute-access bugs reachable with a hand-built malformed payload, the
+      same pattern every prior crash fix in this project's history has used; nothing new to add
+      to "Needs verification" below beyond what's already there about malformed-tool-call
+      handling in general.
+      Ran a coverage report (`coverage run -m pytest` + `coverage report -m`) before concluding
+      this pass: overall coverage is 94%, and the remaining gaps are exactly the same kind
+      already noted as fine in earlier sessions — real subprocess-launching wiring
+      (`connect_sales_mcp_server`/`connect_filesystem_mcp_server`/`connect_git_mcp_server`),
+      `app/main.py`'s `run()`/`__main__` entrypoint, and `mcp_server_sales/core/http_server.py`'s
+      `serve_http()` — all integration glue that's exercised for real via
+      `python -m app.demo_mcp_sales` and the real-subprocess test files rather than mocked unit
+      tests, not undiscovered bug surface.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
       section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
