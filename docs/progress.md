@@ -605,6 +605,44 @@ Read this file at the start of every autonomous session and update the Status se
         "Arquitectura" commit and were deliberately left alone — the student was asked and
         hadn't confirmed removing those when this session ended.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case, nothing new to implement there. The web
+      frontend added last session was also new ground no review pass had looked at closely yet,
+      so this session did a focused code-review pass centered on the web API and the client-side
+      JSON-RPC parsing it (and the CLI) both depend on. Found and fixed three more real,
+      previously-untested crash bugs, each with a regression test confirmed to fail against the
+      pre-fix code and pass after:
+      1. `prompt_text()` (`app/main.py`) indexes `message["content"]["text"]` unconditionally on
+         a `prompts/get` result. Both call sites — `app/main.py`'s CLI `/prompt` handler and the
+         new `app/web/api.py`'s `/api/chat` handler — called it *outside* the `try/except`
+         wrapping `client_for_prompt`/`get_prompt`, so a malformed result (e.g. a message missing
+         `"content"`) raised an uncaught `KeyError` and crashed the session/request instead of
+         the normal error response every other prompt failure already got. Fixed by moving the
+         `prompt_text()` call inside each `try` block. New regression test in
+         `tests/test_web_api.py` (the CLI path mirrors the same fix but has no unit-test harness
+         for `run()`, same as other `run()`-only fixes in this project's history).
+      2. `parse_response()` (`app/mcp_client/protocol.py`) called `error.get(...)` unconditionally
+         on a JSON-RPC response's `"error"` field. The spec requires that field to be an object,
+         but a peer this project doesn't control (the official filesystem/git servers, or a
+         future remote deployment reached over the network) could send something else — a bare
+         string, say — raising an uncaught `AttributeError` that bypassed every caller's
+         `except (MCPProtocolError, ConnectionError)` net. Now raises a normal
+         `MCPProtocolError` instead when `error` isn't a dict. New regression test in
+         `tests/test_mcp_client.py`.
+      3. `MCPClient._call()` (`app/mcp_client/client.py`) did `"id" not in response`
+         unconditionally after `transport.receive()`. Both transports only guarantee valid JSON,
+         not a JSON-RPC *object* — a bare number crashed with an uncaught `TypeError`, and (found
+         while writing the regression test) a bare string/list would have silently looped
+         forever instead, since substring/element membership never happens to match `"id"`,
+         hanging the whole session waiting for a "matching" message that would never come. Now
+         raises `MCPProtocolError` on a non-dict response. New regression test in
+         `tests/test_mcp_client.py`.
+      All three verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end after each fix) and the full suite
+      (142 passed, up from 139 at the start of this session). None needed live Ollama — all
+      three are pure malformed-external-response bugs reachable with a hand-built payload, the
+      same pattern nearly every prior crash fix in this project's history has used.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
