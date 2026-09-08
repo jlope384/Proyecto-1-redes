@@ -307,10 +307,13 @@ def run():
                 try:
                     client = registry.client_for_prompt(name)
                     result = client.get_prompt(name, arguments)
-                except Exception as exc:  # UnknownPromptError, MCPProtocolError, bad arguments
+                    user_input = prompt_text(result)
+                except Exception as exc:  # UnknownPromptError, MCPProtocolError, bad
+                    # arguments, or a malformed prompts/get result shape (e.g. a message
+                    # missing "content"/"text") that would otherwise raise an uncaught
+                    # KeyError straight out of prompt_text and crash the session.
                     render_error(str(exc))
                     continue
-                user_input = prompt_text(result)
                 render_prompt_echo(name, user_input)
 
             session.add_user_message(user_input)

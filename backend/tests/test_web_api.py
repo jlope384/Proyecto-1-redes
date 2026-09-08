@@ -143,6 +143,35 @@ def test_chat_endpoint_resolves_a_slash_prompt_command():
     assert body["reply"] == "aqui esta el resumen"
 
 
+def test_chat_endpoint_reports_error_event_for_malformed_prompt_result():
+    """A prompts/get result missing the "content"/"text" shape prompt_text() assumes (e.g. a
+    message with no "content" key) used to raise an uncaught KeyError straight through the
+    /api/chat handler instead of the normal error-event response every other prompt failure
+    (unknown prompt, bad arguments) already gets."""
+
+    class MalformedPromptClient(FakeClient):
+        def get_prompt(self, name, arguments):
+            return {"messages": [{"role": "user"}]}
+
+    prompt_client = MalformedPromptClient(
+        "sales",
+        tools=[],
+        result=None,
+        prompts=[{"name": "resumen_pedido", "description": "d", "arguments": []}],
+    )
+    llm = FakeLLM([])
+    app = make_app(llm, prompt_client)
+
+    with TestClient(app) as client:
+        response = client.post("/api/chat", json={"message": "/prompt resumen_pedido pedido_id=PED-1001"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reply"] == ""
+    assert body["events"][0]["type"] == "error"
+    assert llm.calls == []
+
+
 def test_servers_endpoint_lists_model_and_connected_servers():
     tool_client = FakeClient("sales", tools=[], result=None)
     llm = FakeLLM([])

@@ -139,9 +139,12 @@ def create_app(llm_client=None, registry=None, session=None, logger=None, tools=
             try:
                 prompt_client = state["registry"].client_for_prompt(name)
                 result = prompt_client.get_prompt(name, arguments)
-            except Exception as exc:  # UnknownPromptError, MCPProtocolError, bad arguments
+                text = prompt_text(result)
+            except Exception as exc:  # UnknownPromptError, MCPProtocolError, bad
+                # arguments, or a malformed prompts/get result shape (e.g. a message
+                # missing "content"/"text") that would otherwise raise an uncaught
+                # KeyError straight out of prompt_text.
                 return ChatResponse(reply="", events=[{"type": "error", "text": str(exc)}])
-            text = prompt_text(result)
             events.append({"type": "prompt", "name": name, "text": text})
 
         start_index = len(session.messages)
