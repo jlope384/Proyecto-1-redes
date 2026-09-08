@@ -24,6 +24,15 @@ class MCPClient:
         self.transport.send(build_request(request_id, method, params))
         while True:
             response = self.transport.receive()
+            if not isinstance(response, dict):
+                # A transport only guarantees valid JSON, not a JSON-RPC *object* - a peer we
+                # don't control (a third-party server, or a network response mangled by a
+                # proxy/load balancer in front of a remote deployment) could send a bare
+                # scalar or array. `"id" not in response` on a non-dict either raises
+                # TypeError (a number) or silently misreads substring/element membership (a
+                # string/list), which could loop here forever waiting for a "matching"
+                # message that never comes, instead of failing loudly.
+                raise MCPProtocolError(None, f"Received a non-object JSON-RPC message: {response!r}")
             if "id" not in response:
                 # Server-initiated notification (e.g. notifications/progress, logging) sent
                 # unprompted between our request and its response - not a reply to us.

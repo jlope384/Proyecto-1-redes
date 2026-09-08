@@ -136,6 +136,18 @@ def test_error_response_raises_mcp_protocol_error():
         client.list_tools()
 
 
+def test_call_raises_mcp_protocol_error_on_non_object_json_rpc_message():
+    # A transport only guarantees valid JSON, not a JSON-RPC *object* - a bare number used to
+    # raise an uncaught TypeError from "id" not in response instead of a normal
+    # MCPProtocolError, and a bare string/list would have silently looped forever instead
+    # (substring/element membership never matches "id").
+    transport = FakeTransport([5])
+    client = MCPClient(transport, server_name="sales")
+
+    with pytest.raises(MCPProtocolError):
+        client.list_tools()
+
+
 def test_error_response_with_non_dict_error_field_still_raises_mcp_protocol_error():
     # A spec-noncompliant peer (third-party server, or a future network deployment) sending
     # a bare string/list "error" instead of an object used to raise an uncaught AttributeError
