@@ -232,3 +232,53 @@ cd backend
 python -m app.demo_mcp_sales   # drives the full protocol without the LLM in the loop
 python -m pytest tests/test_mcp_server_sales.py   # unit tests for every handler above
 ```
+
+## Remote deployment (Google Cloud Run)
+
+The exact same `handle_message` JSON-RPC logic also runs standalone over HTTP
+(`backend/mcp_server_sales/core/http_server.py`, stdlib `http.server` only, no MCP SDK), a
+single `POST /rpc` endpoint that accepts the same JSON-RPC request bodies shown throughout
+this document and returns the same response bodies — the transport changes, the protocol
+doesn't.
+
+- **Image**: `deploy/cloud-run/Dockerfile` (build context: `backend/`). The server has no
+  third-party dependencies (stdlib only), so the image installs nothing beyond the base
+  Python image.
+- **Endpoint**: deployed to Cloud Run at
+  `https://mcp-server-sales-715967091740.us-central1.run.app/rpc` (project
+  `proyecto1-redes-mcp`, region `us-central1`), reachable unauthenticated
+  (`--allow-unauthenticated`) — acceptable for this course project's scope, but note this
+  means anyone with the URL can call it; a production deployment would put an API key or
+  IAM-based auth in front of it.
+- **Client side**: `backend/app/main.py:connect_sales_mcp_server` picks the transport based
+  on the `SALES_MCP_URL` environment variable — unset, it launches the local subprocess over
+  stdio (`app/mcp_client/transports/stdio.py`); set to the Cloud Run URL above, it uses
+  `app/mcp_client/transports/http.py`'s `HttpTransport` instead. Same `MCPClient`, same
+  tools/prompts/resources, only the wire transport differs — this is what section 3.1.6 of
+  the assignment asks for ("el chatbot debe hacer uso del servidor MCP remoto tal y como
+  utiliza el servidor local").
+
+Redeploy after a code change:
+
+```bash
+docker build -f deploy/cloud-run/Dockerfile -t mcp-server-sales:local backend
+docker tag mcp-server-sales:local us-central1-docker.pkg.dev/proyecto1-redes-mcp/mcp-servers/mcp-server-sales:latest
+docker push us-central1-docker.pkg.dev/proyecto1-redes-mcp/mcp-servers/mcp-server-sales:latest
+gcloud run deploy mcp-server-sales \
+  --image us-central1-docker.pkg.dev/proyecto1-redes-mcp/mcp-servers/mcp-server-sales:latest \
+  --region us-central1 --allow-unauthenticated --port 8080 --project=proyecto1-redes-mcp
+```
+
+Run the chatbot against the remote server instead of the local subprocess:
+
+```bash
+export SALES_MCP_URL=https://mcp-server-sales-715967091740.us-central1.run.app   # Linux/macOS
+set SALES_MCP_URL=https://mcp-server-sales-715967091740.us-central1.run.app      # Windows (cmd)
+cd backend
+python -m app.main
+```
+
+Verified for real (not just unit-tested) against the live deployment: `curl -X POST
+.../rpc` for `initialize` and `tools/call`, and a direct run of
+`app.main.connect_sales_mcp_server` using the real `MCPClient`/`HttpTransport` — both
+returned correct results from the deployed container.

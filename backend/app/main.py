@@ -1,8 +1,9 @@
 """Interactive command-line chatbot host: connects to Ollama, keeps session context, and
-lets the LLM call tools exposed by multiple MCP servers (JSON-RPC over stdio).
+lets the LLM call tools exposed by multiple MCP servers (JSON-RPC over stdio or HTTP).
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from app.logging.interaction_logger import DEFAULT_LOG_DIR, build_interaction_lo
 from app.mcp_client.client import MCPClient
 from app.mcp_client.protocol import MCPProtocolError
 from app.mcp_client.registry import ToolRegistry, UnknownToolError
+from app.mcp_client.transports.http import HttpTransport
 from app.mcp_client.transports.stdio import StdioTransport
 from app.ui.console import (
     render_banner,
@@ -40,7 +42,14 @@ SYSTEM_PROMPT = (
 
 
 def connect_sales_mcp_server(logger):
-    transport = StdioTransport("python", ["-m", "mcp_server_sales"])
+    """Connect to the sales MCP server over stdio (local subprocess) by default, or over
+    HTTP to a remote deployment (e.g. Cloud Run) when SALES_MCP_URL is set - same client,
+    same tools/prompts/resources, only the transport changes."""
+    remote_url = os.environ.get("SALES_MCP_URL")
+    if remote_url:
+        transport = HttpTransport(remote_url)
+    else:
+        transport = StdioTransport("python", ["-m", "mcp_server_sales"])
     client = MCPClient(transport, server_name="sales")
     log_interaction(logger, "mcp:sales", "request", {"method": "initialize"})
     server_info = client.initialize()

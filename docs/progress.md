@@ -8,6 +8,32 @@ Read this file at the start of every autonomous session and update the Status se
 ## Status
 
 ### Done
+- [x] Remote deployment of `mcp_server_sales` to Google Cloud Run — this was the one item
+      genuinely blocked on the student's own cloud account/credentials, done with the
+      student present in this session: installed the Google Cloud SDK, authenticated as
+      the student's account, created a dedicated project (`proyecto1-redes-mcp`), linked
+      billing (required by Cloud Run even for free-tier usage — no billing account existed
+      on this Google account before this session, the student created one), enabled the
+      Cloud Run/Artifact Registry APIs, built the existing `deploy/cloud-run/Dockerfile`
+      image, pushed it to Artifact Registry, and deployed to Cloud Run. Live at
+      `https://mcp-server-sales-715967091740.us-central1.run.app`, unauthenticated
+      (`--allow-unauthenticated`, acceptable for this course project's scope but noted as a
+      real caveat in the spec doc). Code changes to support this: `connect_sales_mcp_server`
+      (`app/main.py`) now reads `SALES_MCP_URL` and switches from `StdioTransport` to the
+      already-existing `HttpTransport` when set (2 new tests,
+      `tests/test_connect_sales_mcp_server.py`); `mcp_server_sales/__main__.py`'s HTTP
+      transport now defaults host/port to `0.0.0.0`/`$PORT` (env vars) instead of
+      `127.0.0.1`/`8765`, matching what Cloud Run requires, with CLI flags still able to
+      override. Verified for real, not just locally: built and ran the image in Docker
+      locally first (curl against `/rpc`), then against the live Cloud Run URL both with
+      `curl` (`initialize`, `tools/call buscar_productos`) and by running the actual
+      `app.main.connect_sales_mcp_server` + real `MCPClient`/`HttpTransport` code path
+      against the deployed service (not mocked) — both returned correct results. Full test
+      suite (131 tests) still passes. Documented in `README.md` and
+      `docs/spec/mcp_server_sales.md` (new "Remote deployment" section with redeploy
+      commands). This unblocks the Wireshark capture (needed a real remote deployment to
+      capture traffic against) and report sections 9/10 — see backlog below, now
+      unblocked.
 - [x] Ollama LLM client (`backend/app/llm/ollama_client.py`) — HTTP call to `/api/chat`,
       plus `chat_raw` for tool-calling
 - [x] Chat session with context history (`backend/app/chat/session.py`), incl. tool_calls/tool
@@ -480,11 +506,15 @@ Read this file at the start of every autonomous session and update the Status se
       tests, not undiscovered bug surface.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-- [ ] Report section 9 (link/network/transport-layer analysis from a Wireshark capture) and
-      section 10 (conclusions) — cannot be written yet: section 9 needs a real Wireshark
-      capture against the *remote* deployment (student's own machine/network), and conclusions
-      are premature before the remote deployment and presentation are done. Revisit once the
-      remote deployment (see below) exists.
+- [ ] Wireshark capture against the live remote deployment
+      (`https://mcp-server-sales-715967091740.us-central1.run.app`, now deployed - see Done
+      log) while running the chatbot with `SALES_MCP_URL` set to that URL, classifying which
+      JSON-RPC messages are the sync (`initialize`/`notifications/initialized`),
+      request/petition (`tools/call`, etc.), and response frames (assignment section 3.1.7).
+      Needs the student's own machine/network and Wireshark run interactively.
+- [ ] Report section 9 (link/network/transport-layer analysis from the Wireshark capture above)
+      and section 10 (conclusions) — write once the capture exists; conclusions are also
+      premature before the presentation is done.
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
       just to demonstrate the shape. Re-checked this session again: the current catalog/order
@@ -492,10 +522,11 @@ Read this file at the start of every autonomous session and update the Status se
       there's still no genuine fit — nothing implemented, left for a future session if the scope
       grows (e.g. product photos).
 
-Both items above have now been re-checked and found still-blocked across several consecutive
-sessions with no change in their blockers — a future session shouldn't need to re-verify this
-from scratch every time; only re-check if something about the environment actually changes
-(e.g. the remote deployment gets done, or product images get added to the catalog).
+The binary-resource item has been re-checked and found still-blocked (no genuine use case)
+across several consecutive sessions with no change — no need to re-verify from scratch every
+time; only re-check if the catalog scope actually grows (e.g. product photos get added). The
+remote-deployment blocker that used to sit alongside it is resolved (see Done log) — the
+Wireshark item above is next.
 
 ### Needs verification by the student on their own machine
 - New this session: the `handle_tool_calls` fix for a `tool_calls` entry missing
@@ -590,10 +621,11 @@ from claude.ai Settings → Connectors, or have an org admin grant it at
 https://github.com/apps/claude/installations/select_target.
 
 ### Explicitly OUT of scope for the autonomous routine (needs the human)
-- Remote deployment of `mcp_server_sales` to Google Cloud Run / Cloudflare (needs a
-  real cloud account and credentials).
-- Wireshark capture and analysis (needs the student's local network/machine).
-- Report sections that depend on the above (link-layer/transport analysis).
+- Wireshark capture and analysis (needs the student's local network/machine, and
+  Wireshark run interactively - not something a cloud sandbox agent can do). The remote
+  deployment this was blocked on now exists (see Done log above); this is the next thing
+  to do.
+- Report sections that depend on the above (link-layer/transport analysis, section 9).
 - Presentation prep.
 
 ## Working agreement for autonomous sessions

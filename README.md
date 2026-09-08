@@ -38,15 +38,18 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
   search a product, then check its stock) - it keeps offering tools back to the LLM across up to
   five rounds instead of stopping after the first tool call.
 
-- **HTTP transport scaffold for the sales server**: `mcp_server_sales/core/http_server.py` exposes
-  the same hand-rolled `handle_message` JSON-RPC logic over a single `POST /rpc` HTTP endpoint
-  (stdlib `http.server`, no MCP SDK), so the server can eventually run as a standalone process
-  instead of only as a subprocess launched over stdio. Run it with
-  `python -m mcp_server_sales --transport http --port 8765`. `app/mcp_client/transports/http.py`
-  is the matching client-side transport (same `send`/`receive`/`close` interface as the stdio
-  transport). This is a scaffold, not a deployment: actual cloud hosting is out of scope for now
-  (see `docs/progress.md`), and the chatbot in `app/main.py` still uses stdio for all three
-  servers.
+- **Remote MCP server (Google Cloud Run)**: the sales server also runs as a standalone HTTP
+  service (`mcp_server_sales/core/http_server.py`, stdlib `http.server` only, no MCP SDK, no web
+  framework) exposing the exact same hand-rolled JSON-RPC logic over a single `POST /rpc`
+  endpoint. It's deployed to Google Cloud Run at
+  `https://mcp-server-sales-715967091740.us-central1.run.app` (Dockerfile at
+  `deploy/cloud-run/Dockerfile`; full deploy/redeploy commands in
+  `docs/spec/mcp_server_sales.md`, "Remote deployment" section). The chatbot uses it exactly
+  like the local server: set `SALES_MCP_URL` to the Cloud Run URL and
+  `app/main.py:connect_sales_mcp_server` switches from the local stdio subprocess to
+  `app/mcp_client/transports/http.py`'s `HttpTransport` - same `MCPClient`, same
+  tools/prompts/resources either way. Leave `SALES_MCP_URL` unset to keep using the local
+  subprocess (the default).
 
 - **Terminal UI (extra credit)**: `backend/app/ui/console.py` renders the chatbot through
   [`rich`](https://github.com/Textualize/rich) instead of plain `print()`: the user prompt, bot
@@ -94,6 +97,17 @@ export OLLAMA_HOST=http://localhost:11434
 set OLLAMA_MODEL=llama3           # on Windows (cmd)
 set OLLAMA_HOST=http://localhost:11434
 ```
+
+To use the remote sales MCP server (deployed to Google Cloud Run) instead of the local
+subprocess, set `SALES_MCP_URL` before starting the chatbot:
+
+```bash
+export SALES_MCP_URL=https://mcp-server-sales-715967091740.us-central1.run.app   # Linux/macOS
+set SALES_MCP_URL=https://mcp-server-sales-715967091740.us-central1.run.app      # Windows (cmd)
+```
+
+Leave it unset to keep using the local server (the default). See
+`docs/spec/mcp_server_sales.md` for the deployment details.
 
 ## Usage
 
