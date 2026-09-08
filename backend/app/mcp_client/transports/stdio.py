@@ -2,13 +2,18 @@
 JSON-RPC messages over its stdin/stdout, per the MCP stdio transport spec.
 """
 import json
+import shutil
 import subprocess
 
 
 class StdioTransport:
     def __init__(self, command, args=None, cwd=None):
+        # On Windows, commands like `npx`/`uvx` resolve to a `.cmd`/`.bat` shim that
+        # CreateProcess can't exec directly without a shell. shutil.which() resolves the
+        # PATHEXT-aware full path on Windows and is a harmless no-op lookup on POSIX.
+        resolved_command = shutil.which(command) or command
         self.process = subprocess.Popen(
-            [command, *(args or [])],
+            [resolved_command, *(args or [])],
             cwd=cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,

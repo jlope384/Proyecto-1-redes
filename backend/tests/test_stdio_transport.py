@@ -82,3 +82,28 @@ def test_close_is_a_noop_if_process_already_exited():
     transport.close()
 
     fake_process.terminate.assert_not_called()
+
+
+def test_init_resolves_command_via_shutil_which():
+    # On Windows, `npx`/`uvx` are `.cmd` shims that subprocess.Popen can't exec directly
+    # without going through a shell - shutil.which() resolves the real executable path
+    # (with its PATHEXT-matched extension) so Popen can launch it directly on any OS.
+    fake_process = MagicMock()
+    fake_process.poll.return_value = None
+    with patch("app.mcp_client.transports.stdio.shutil.which", return_value=r"C:\nodejs\npx.cmd"):
+        with patch("app.mcp_client.transports.stdio.subprocess.Popen", return_value=fake_process) as popen:
+            StdioTransport("npx", ["-y", "some-package"])
+
+    args, kwargs = popen.call_args
+    assert args[0][0] == r"C:\nodejs\npx.cmd"
+
+
+def test_init_falls_back_to_raw_command_if_not_found_on_path():
+    fake_process = MagicMock()
+    fake_process.poll.return_value = None
+    with patch("app.mcp_client.transports.stdio.shutil.which", return_value=None):
+        with patch("app.mcp_client.transports.stdio.subprocess.Popen", return_value=fake_process) as popen:
+            StdioTransport("some-missing-command")
+
+    args, kwargs = popen.call_args
+    assert args[0][0] == "some-missing-command"

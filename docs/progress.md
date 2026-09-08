@@ -505,16 +505,67 @@ Read this file at the start of every autonomous session and update the Status se
       `python -m app.demo_mcp_sales` and the real-subprocess test files rather than mocked unit
       tests, not undiscovered bug surface.
 
+- [x] First real local verification session on the student's own Windows machine (everything
+      before this was sandbox-only, per the "Needs verification" notes below). Set up the local
+      environment: installed `uv` (winget, needed for `uvx`/the git MCP server), installed
+      `backend/requirements.txt` into the existing `.venv` (`rich` was missing), confirmed
+      Ollama was already installed with `qwen2.5:7b` pulled, confirmed git identity was already
+      configured globally. Found and fixed two real bugs surfaced only by testing on Windows for
+      the first time:
+      1. `StdioTransport.__init__` (`app/mcp_client/transports/stdio.py`) called
+         `subprocess.Popen(["npx", ...])` / `Popen(["uvx", ...])` directly, which crashed with
+         `FileNotFoundError` on Windows: `npx` resolves to an `npx.cmd` shim there, and
+         `CreateProcess` can't exec a `.cmd` file directly the way it execs a real binary on
+         POSIX. This is exactly the platform the assignment will be run and presented on, so it
+         was a real, would-have-failed-the-demo bug, not a hypothetical one. Fixed by resolving
+         the command through `shutil.which()` before `Popen` (PATHEXT-aware on Windows, a
+         harmless no-op lookup on POSIX where `npx`/`uvx`/`python` already resolve directly).
+         Two new regression tests in `tests/test_stdio_transport.py`.
+      2. The filesystem+git demo scenario from the assignment (section 4, functionality #4: "ask
+         the chatbot to create a repo, create a README, add it, and commit it") was flaky against
+         the real local model (`qwen2.5:7b`): the filesystem tool is scoped to the workspace root
+         while the git tools operate on the `demo-repo` subfolder, and the old `SYSTEM_PROMPT`
+         only described that relationship in prose. The model wrote the README at the workspace
+         root (outside the repo) once, and separately tried relative/half-remembered absolute
+         `repo_path` values for `git_add`/`git_commit` that didn't resolve to the real repo,
+         burning tool-call rounds and hitting `MAX_TOOL_ROUNDS` without ever committing (or, in
+         one run, letting the official git server produce a misleadingly "successful" empty
+         commit while the bot told the user it had committed the file). Reworded `SYSTEM_PROMPT`
+         in `app/main.py` to spell out the exact literal `repo_path` string to copy verbatim for
+         every git tool call, to write repo-bound files at `demo-repo/<filename>`, and to only
+         report success to the user when the tool result actually confirms it. Verified for real,
+         repeatedly, against the live chatbot (`python -m app.main`, real Ollama, real
+         filesystem/git subprocesses): the scenario now reliably completes in 3 tool-call rounds
+         (`write_file` -> `git_add` -> `git_commit`) with a real commit landing in the repo (confirmed
+         via `git log --stat`). No test asserts on the prompt's exact wording (nothing did
+         before either), so no test changes needed here beyond the transport fix above.
+      Also did a full live pass through the "Needs verification" list below with a real Ollama
+      server and all three real MCP server subprocesses (sales/filesystem/git) - see that section
+      for what's now confirmed vs. still open. Full suite: 133 passed (up from 131), all on this
+      machine, not the cloud sandbox.
+
+- [x] Wireshark capture against the live remote deployment, done interactively on the
+      student's own Windows machine (this session), with the student's go-ahead. Set
+      `SALES_MCP_URL` to the Cloud Run URL and `SSLKEYLOGFILE` to a local file (natively
+      supported by `requests`/urllib3 - no code change needed), captured with `tshark`
+      filtered to the Cloud Run service's resolved IPs while driving two real user turns
+      through `python -m app.main` (a product search, an order lookup), then decrypted the
+      capture in Wireshark/`tshark` using that keylog. Captured and classified all 6
+      JSON-RPC exchanges: `initialize` + `notifications/initialized` (sync), `tools/list`,
+      `prompts/list`, and two `tools/call`s (request/response). Confirmed each connection
+      does a full TCP three-way handshake + TLS 1.2 ClientHello/TLS 1.3 ServerHello per
+      JSON-RPC call (no `requests.Session` reuse in `HttpTransport`, noted as a real but
+      out-of-scope-for-now efficiency observation, not a bug - functionally correct).
+      Artifacts saved at `docs/wireshark/mcp_remote_capture.pcapng` and
+      `docs/wireshark/tls_keylog.log`. No code changed for this item; it was pure capture
+      and analysis.
+- [x] Report section 9 (link/network/transport/application-layer analysis of the Wireshark
+      capture above, with the real decrypted JSON-RPC frames and a request/response table)
+      and section 10 (conclusions) written in `docs/report/informe.md`. Also fixed a stale
+      line in section 8.1 that still said the HTTP transport was "sin desplegar" even
+      though the remote deployment had already happened in an earlier session.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
-- [ ] Wireshark capture against the live remote deployment
-      (`https://mcp-server-sales-715967091740.us-central1.run.app`, now deployed - see Done
-      log) while running the chatbot with `SALES_MCP_URL` set to that URL, classifying which
-      JSON-RPC messages are the sync (`initialize`/`notifications/initialized`),
-      request/petition (`tools/call`, etc.), and response frames (assignment section 3.1.7).
-      Needs the student's own machine/network and Wireshark run interactively.
-- [ ] Report section 9 (link/network/transport-layer analysis from the Wireshark capture above)
-      and section 10 (conclusions) — write once the capture exists; conclusions are also
-      premature before the presentation is done.
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
       just to demonstrate the shape. Re-checked this session again: the current catalog/order
@@ -524,11 +575,23 @@ Read this file at the start of every autonomous session and update the Status se
 
 The binary-resource item has been re-checked and found still-blocked (no genuine use case)
 across several consecutive sessions with no change — no need to re-verify from scratch every
-time; only re-check if the catalog scope actually grows (e.g. product photos get added). The
-remote-deployment blocker that used to sit alongside it is resolved (see Done log) — the
-Wireshark item above is next.
+time; only re-check if the catalog scope actually grows (e.g. product photos get added). Both
+of the blockers that used to sit alongside it (remote deployment, then the Wireshark capture)
+are now resolved (see Done log) — presentation prep is the only thing explicitly left, and
+that needs the student directly (see "Explicitly OUT of scope" below).
 
 ### Needs verification by the student on their own machine
+**Update from the first real local-machine session (this one):** confirmed live and working on
+the student's own Windows machine, real Ollama (`qwen2.5:7b`), real subprocesses for all three
+MCP servers: a plain conversational turn, context carried across turns, tool-calling for
+`buscar_productos` (chained correctly from a natural-language question), the full
+filesystem+git demo scenario (write README -> git add -> git commit, real commit confirmed via
+`git log`, after the `SYSTEM_PROMPT` fix noted above), `/prompt resumen_pedido pedido_id=...`,
+and the terminal UI's colored panels/tool-call lines rendering correctly in a real Windows
+terminal. The bullets below predate this session and are kept for what's still genuinely
+unconfirmed (a real MCP server dying mid-session, the malformed-tool-call-from-the-model path,
+narrow-terminal contrast in the student's actual color theme, the exact 200-char truncation
+feel).
 - New this session: the `handle_tool_calls` fix for a `tool_calls` entry missing
   `function`/`name`/`arguments` is unit-tested with a fake payload shaped like Ollama's format,
   but wasn't (and, by nature, can't reliably be) triggered by a real model during a live run —
@@ -621,12 +684,12 @@ from claude.ai Settings → Connectors, or have an org admin grant it at
 https://github.com/apps/claude/installations/select_target.
 
 ### Explicitly OUT of scope for the autonomous routine (needs the human)
-- Wireshark capture and analysis (needs the student's local network/machine, and
-  Wireshark run interactively - not something a cloud sandbox agent can do). The remote
-  deployment this was blocked on now exists (see Done log above); this is the next thing
-  to do.
-- Report sections that depend on the above (link-layer/transport analysis, section 9).
-- Presentation prep.
+- Wireshark capture and analysis: done (see Done log above) — it needed the student's own
+  local network/machine and was run interactively with the student present in this
+  session, not by an autonomous cloud-sandbox agent.
+- Presentation prep: still open. Needs the student to actually give the presentation
+  (features, difficulties, lessons learned) — an outline/talking points doc can be
+  drafted ahead of time, but the demo itself needs the student.
 
 ## Working agreement for autonomous sessions
 - Aim for ~3 atomic, real, tested commits per run. No filler or empty commits just to
