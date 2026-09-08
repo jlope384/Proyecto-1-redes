@@ -36,5 +36,12 @@ def parse_response(message):
     """Return the `result` of a JSON-RPC response, raising MCPProtocolError on `error`."""
     if "error" in message:
         error = message["error"]
+        # The JSON-RPC spec requires `error` to be an object, but a peer we don't control
+        # (the official filesystem/git servers, or any future remote deployment reached over
+        # the network) is free to send something else - a bare string, say. `error.get(...)`
+        # on a non-dict used to raise an uncaught AttributeError here instead of the
+        # MCPProtocolError callers already know how to handle.
+        if not isinstance(error, dict):
+            raise MCPProtocolError(None, str(error))
         raise MCPProtocolError(error.get("code"), error.get("message"), error.get("data"))
     return message.get("result")

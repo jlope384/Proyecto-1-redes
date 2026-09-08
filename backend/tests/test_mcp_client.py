@@ -134,3 +134,14 @@ def test_error_response_raises_mcp_protocol_error():
 
     with pytest.raises(MCPProtocolError):
         client.list_tools()
+
+
+def test_error_response_with_non_dict_error_field_still_raises_mcp_protocol_error():
+    # A spec-noncompliant peer (third-party server, or a future network deployment) sending
+    # a bare string/list "error" instead of an object used to raise an uncaught AttributeError
+    # from error.get(...) instead of the normal MCPProtocolError.
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1, "error": "boom"}])
+    client = MCPClient(transport, server_name="sales")
+
+    with pytest.raises(MCPProtocolError):
+        client.list_tools()
