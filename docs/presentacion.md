@@ -2,7 +2,10 @@
 
 Esquema para la entrega oral (CC3067, sección 3.3 del enunciado: características
 implementadas, dificultades, lecciones aprendidas). Pensado para presentarse haciendo la
-demo en vivo desde la terminal (`backend/`, `python -m app.main`), no con slides estáticas.
+demo en vivo desde el navegador (`backend/`, `python -m app.web`, abrir
+`http://127.0.0.1:8000/`), no con slides estáticas. La terminal (`python -m app.main`) sigue
+funcionando igual y es el respaldo si el navegador falla o si preguntan específicamente por la
+UI de terminal (extra credit) — ver el punto 0 y la nota al final de la sección 1.
 
 ## 0. Antes de presentar (checklist de 2 minutos)
 
@@ -11,6 +14,13 @@ demo en vivo desde la terminal (`backend/`, `python -m app.main`), no con slides
 - [ ] Limpiar el workspace de demo si quieres una corrida "fresca":
       borrar `backend/workspace/demo-repo` y `backend/workspace/*.md` (está en
       `.gitignore`, no afecta el repo del proyecto).
+- [ ] Arrancar `python -m app.web` y confirmar `http://127.0.0.1:8000/` carga y que el header
+      muestra `Model: qwen2.5:7b | MCP servers: sales, filesystem, git` (tarda ~10-15s en
+      arrancar la primera vez mientras `npx`/`uvx` lanzan los servidores oficiales — arráncalo
+      con tiempo antes de presentar, no en vivo frente a la audiencia).
+- [ ] Ten también una terminal con `python -m app.main` lista como respaldo (mismo backend,
+      mismo comportamiento) por si el navegador da problemas, y para mostrar la UI de terminal
+      si preguntan puntualmente por el extra credit.
 - [ ] Decidir si la demo del servidor remoto se hace con `SALES_MCP_URL` seteado
       (Cloud Run real) o sin setear (subproceso local) — recomendado: mostrar ambas,
       primero local, luego exportar la variable y repetir una pregunta para que se note
@@ -46,10 +56,16 @@ demo en vivo desde la terminal (`backend/`, `python -m app.main`), no con slides
   mensajes JSON-RPC (sync/request/response) de `docs/report/informe.md` sección 9, y
   opcionalmente el pcap descifrado en vivo si hay tiempo.
 
-**Extra (15%): UI de terminal** — señalar los colores con intención (cian=usuario,
-verde=respuesta del bot en panel, amarillo tenue=actividad de tools en segundo plano,
-rojo=errores, azul=info del sistema) y el spinner de "Thinking..." mientras responde el
-LLM.
+**Extra (15%): UI** — el enunciado da el 15% por una UI "en terminal o Web", no acumulable;
+este proyecto tiene ambas con la misma lógica por debajo y la misma convención de colores
+(cian=usuario, verde=respuesta del bot, amarillo tenue=actividad de tools en segundo plano,
+rojo=errores, azul=info del sistema). La demo en vivo se hace en la UI Web
+(`python -m app.web`, `http://127.0.0.1:8000/`) — mismo backend, misma sesión, mismos
+servidores MCP que la terminal, solo cambia la capa de presentación
+(`backend/app/web/api.py` reutiliza `run_turn` de `app/main.py` tal cual). Si preguntan
+específicamente por la UI de terminal (la que se implementó primero), se puede mostrar con
+`python -m app.main` — mismo comportamiento, señalar el spinner de "Thinking..." mientras
+responde el LLM.
 
 ## 2. Dificultades (y cómo se resolvieron)
 

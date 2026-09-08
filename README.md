@@ -63,6 +63,16 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
   width. `python -m app.demo_mcp_sales` gets the same light-touch treatment (a bold label per
   JSON-RPC step), since it's meant to be read directly rather than piped.
 
+- **Web UI**: `backend/app/web/` exposes the exact same host logic (session, tool-registry,
+  `run_turn`) as a small FastAPI JSON API (`POST /api/chat`, `GET /api/servers`) instead of a
+  terminal loop, and serves a single-page chat client from `frontend/public/index.html` (plain
+  HTML/CSS/JS, no build step) on the same origin. It reuses `app.main.run_turn` as-is rather than
+  re-implementing tool-calling, so it can't drift from the terminal host's already-tested
+  behavior — the only new piece is reconstructing a JSON event list (tool calls/results) from
+  what a turn appended to the session, for the frontend to render as activity lines. Follows the
+  same color convention as the terminal UI (cyan = user, green = bot reply, dim yellow = tool
+  activity, red = errors). Run it with `python -m app.web` (see Usage below).
+
 More features (remote deployment, Wireshark analysis) will be added incrementally as the project
 progresses — see `docs/progress.md` for the live backlog.
 
@@ -125,6 +135,21 @@ To start a turn from one of the sales server's prompt templates instead of free-
 You: /prompt resumen_pedido pedido_id=PED-1001
 You: /prompt recomendar_outfit ocasion=boda presupuesto=500
 ```
+
+### Web UI
+
+To run the chatbot as a web app instead of a terminal loop:
+
+```bash
+cd backend
+python -m app.web
+```
+
+Then open `http://127.0.0.1:8000/` in a browser. It connects to the same three MCP servers
+(sales, filesystem, git) and the same Ollama model as `python -m app.main` — set
+`OLLAMA_MODEL`/`OLLAMA_HOST`/`SALES_MCP_URL` beforehand exactly as described above if you need to
+override any of them. Override the web server's own host/port with `WEB_HOST`/`WEB_PORT` (default
+`127.0.0.1:8000`).
 
 To review everything logged during a session (every LLM and MCP request/response, from
 `backend/logs/interactions.log`):

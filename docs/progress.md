@@ -564,6 +564,46 @@ Read this file at the start of every autonomous session and update the Status se
       and section 10 (conclusions) written in `docs/report/informe.md`. Also fixed a stale
       line in section 8.1 that still said the HTTP transport was "sin desplegar" even
       though the remote deployment had already happened in an earlier session.
+- [x] Web frontend, done with the student present in this session, at the student's request
+      (to demo as a Web app in the presentation instead of the terminal — the assignment's
+      15% UI extra credit only counts once regardless of terminal-vs-Web and is already
+      earned via the `rich` terminal UI, so this was purely for the demo, not for extra
+      points). Filled in the previously-empty `frontend/` scaffold from the original
+      "Arquitectura" commit and added a new `backend/app/web/` package:
+      - `app/web/api.py`: a small FastAPI app exposing `POST /api/chat` and `GET /api/servers`,
+        and serving `frontend/public/index.html` (plain HTML/CSS/JS, no build step) on the same
+        origin, so no CORS setup was needed. Deliberately reuses `app.main.run_turn` (and the
+        `connect_*_mcp_server`/`parse_prompt_command`/`prompt_text` helpers) as-is instead of
+        re-implementing the tool-calling loop for the web path — the only genuinely new logic
+        is `events_since()`, which reconstructs a JSON event list (tool calls/results) from
+        the session messages a turn appended, by reading back what `add_assistant_message`/
+        `add_tool_result` already store, rather than duplicating `handle_tool_calls`. This
+        keeps the web surface from being able to drift from the already-tested CLI behavior.
+      - App-factory pattern (`create_app(llm_client=None, registry=None, ...)`): production
+        (`python -m app.web`) calls it with no arguments, so its `lifespan` connects the three
+        real MCP servers and a real `OllamaClient` on startup exactly like `app.main.run()`
+        does; tests pass fakes directly, which skips real connections entirely. 6 new tests
+        (`tests/test_web_api.py`), using the same `FakeLLM`/`FakeClient` pattern
+        `tests/test_run_turn.py` already established.
+      - `frontend/public/index.html`: single-page chat client, no framework/build step. Same
+        color convention as `app/ui/console.py` (cyan = user, green = bot reply panel, dim
+        yellow = background tool-call activity, red = errors) for visual consistency between
+        the two UIs.
+      - Verified for real, not just via the mocked tests: ran `python -m app.web` against the
+        student's actual machine — all three real MCP server subprocesses connected
+        (confirmed via `GET /api/servers`), the static page served correctly, a plain question
+        got a real Ollama reply, a follow-up question resolved context correctly ("¿Quién fue
+        Alan Turing?" → "¿En qué fecha nació?"), and a product question triggered a real
+        `buscar_productos` tool call against the sales server with the `tool_call`/
+        `tool_result` events coming through in the API response exactly as the frontend
+        expects. Also verified the graceful-failure path for real: hit `/api/chat` while
+        Ollama was still starting up and got a clean `{"reply": "", "events": [{"type":
+        "error", ...}]}` instead of a crash. Full suite: 139 passed (up from 133).
+      - Removed `frontend/public/.gitkeep`, now redundant since the folder has real content.
+        `frontend/src/components/`, `frontend/src/lib/`, `mcp-servers-config/`, and
+        `network-analysis/captures/` are still empty scaffolding from the same original
+        "Arquitectura" commit and were deliberately left alone — the student was asked and
+        hadn't confirmed removing those when this session ended.
 
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
