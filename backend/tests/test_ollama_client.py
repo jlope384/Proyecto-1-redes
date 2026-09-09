@@ -84,3 +84,22 @@ def test_chat_raw_raises_ollama_connection_error_on_missing_message_key():
             assert "unexpected response shape" in str(exc)
             return
     assert False, "expected OllamaConnectionError to be raised"
+
+
+def test_chat_raw_raises_ollama_connection_error_on_non_dict_json_body():
+    # A 200 response can be valid JSON without being a JSON object - e.g. a bare `null`. A
+    # scalar like that isn't iterable, so `"message" not in data` used to raise an uncaught
+    # TypeError instead of the documented OllamaConnectionError that run_turn relies on to
+    # keep the chatbot session alive after a bad LLM response.
+    client = OllamaClient(model="test-model")
+    fake_response = MagicMock()
+    fake_response.raise_for_status.return_value = None
+    fake_response.json.return_value = None
+
+    with patch("app.llm.ollama_client.requests.post", return_value=fake_response):
+        try:
+            client.chat_raw([{"role": "user", "content": "hi"}])
+        except OllamaConnectionError as exc:
+            assert "unexpected response shape" in str(exc)
+            return
+    assert False, "expected OllamaConnectionError to be raised"

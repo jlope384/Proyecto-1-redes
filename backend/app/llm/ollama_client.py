@@ -35,7 +35,13 @@ class OllamaClient:
             raise OllamaConnectionError(
                 f"Ollama at {self.base_url} returned a response that isn't valid JSON: {exc}"
             ) from exc
-        if "message" not in data:
+        if not isinstance(data, dict) or "message" not in data:
+            # A 200 response can be valid JSON without being a JSON *object* - e.g. a bare
+            # `null`/number/bool body - and `"message" not in data` on a non-iterable scalar
+            # (int, float, bool, None) raises an uncaught TypeError instead of the documented
+            # OllamaConnectionError that run_turn relies on to keep the session alive after an
+            # LLM failure. Same "don't trust external response shape" reasoning already applied
+            # to the missing-"message"-key case just below.
             raise OllamaConnectionError(
                 f"Ollama at {self.base_url} returned an unexpected response shape (no 'message' "
                 f"key): {data!r}"
