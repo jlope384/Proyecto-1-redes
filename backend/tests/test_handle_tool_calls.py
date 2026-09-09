@@ -215,6 +215,39 @@ def test_extract_tool_result_text_missing_content_key():
     assert extract_tool_result_text({}) == "[tool returned no content]"
 
 
+def test_extract_tool_result_text_non_dict_result():
+    # A JSON-RPC response's "result" is only guaranteed to be present when there's no
+    # "error" - it can legally be `null` (or any other JSON value) rather than the
+    # {"content": [...], "isError": ...} shape a well-formed tools/call result has. A peer
+    # this project doesn't control (the official filesystem/git servers, or a future remote
+    # deployment) sending that used to raise an uncaught AttributeError on `result.get(...)`.
+    assert extract_tool_result_text(None) == "[tool returned no content]"
+    assert extract_tool_result_text("oops") == "[tool returned no content]"
+    assert extract_tool_result_text([1, 2, 3]) == "[tool returned no content]"
+
+
+def test_handle_tool_calls_survives_null_tool_result(capsys):
+    # Same bug, exercised through the real call path: a connected server returning
+    # "result": null for tools/call used to crash the whole chatbot session instead of
+    # reporting a normal (if uninformative) tool result.
+    client = FakeClient(
+        "sales",
+        [{"name": "buscar_productos", "description": "d", "inputSchema": {}}],
+        result=None,
+    )
+    registry = make_registry(client)
+    session = ChatSession()
+    logger = logging.getLogger("test-handle-tool-calls-null-result")
+
+    handle_tool_calls(registry, [tool_call("buscar_productos", {"query": "camisa"})], session, logger)
+
+    assert session.messages[-1] == {
+        "role": "tool",
+        "name": "buscar_productos",
+        "content": "[tool returned no content]",
+    }
+
+
 def test_handle_tool_calls_logs_error_entry():
     logged = []
 

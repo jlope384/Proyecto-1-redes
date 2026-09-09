@@ -139,8 +139,11 @@ def extract_tool_result_text(result):
     The MCP spec only guarantees `content` is a list of typed items - a server is free to
     return an empty list, or items that aren't `type: text` (e.g. `image`/`resource`). The
     hand-rolled sales server always returns a single text item, but the official filesystem/
-    git servers are third-party code we don't control, so this can't assume that shape."""
-    content = result.get("content") or []
+    git servers are third-party code we don't control, so this can't assume that shape.
+    `result` itself isn't guaranteed to be a dict either - a JSON-RPC response's "result" can
+    legally be `null` or any other JSON value - so `result.get(...)` used to raise an uncaught
+    AttributeError on a non-dict result instead of the placeholder text below."""
+    content = (result.get("content") if isinstance(result, dict) else None) or []
     texts = [item["text"] for item in content if isinstance(item, dict) and item.get("type") == "text"]
     if texts:
         return "\n".join(texts)
