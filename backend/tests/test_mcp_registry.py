@@ -112,3 +112,46 @@ def test_client_for_prompt_unhashable_name_raises_unknown_prompt_error_not_crash
 
     with pytest.raises(UnknownPromptError):
         registry.client_for_prompt(["resumen_pedido"])
+
+
+def test_register_skips_tool_spec_missing_name_instead_of_crashing():
+    # A connected server (e.g. the official filesystem/git servers, or a future remote
+    # deployment) is only guaranteed to return valid JSON, not a well-formed tool spec.
+    # `spec["name"]` used to raise an uncaught KeyError here, crashing the whole chatbot
+    # session before it even started.
+    fs = FakeClient(
+        "filesystem",
+        [
+            {"description": "no name field at all"},
+            {"name": "read_file", "description": "d", "inputSchema": {}},
+        ],
+    )
+    registry = ToolRegistry()
+
+    registry.register(fs)  # must not raise
+
+    assert registry.client_for("read_file") is fs
+    names = {t["function"]["name"] for t in registry.ollama_tools()}
+    assert names == {"read_file"}
+
+
+def test_register_skips_tool_spec_with_non_string_name_instead_of_crashing():
+    fs = FakeClient("filesystem", [{"name": ["not", "a", "string"], "description": "d"}])
+    registry = ToolRegistry()
+
+    registry.register(fs)  # must not raise
+
+    assert registry.ollama_tools() == []
+
+
+def test_register_skips_prompt_spec_missing_name_instead_of_crashing():
+    sales = FakeClient(
+        "sales",
+        [],
+        prompts=[{"description": "no name field"}, {"name": "resumen_pedido"}],
+    )
+    registry = ToolRegistry()
+
+    registry.register(sales)  # must not raise
+
+    assert registry.client_for_prompt("resumen_pedido") is sales
