@@ -643,6 +643,54 @@ Read this file at the start of every autonomous session and update the Status se
       three are pure malformed-external-response bugs reachable with a hand-built payload, the
       same pattern nearly every prior crash fix in this project's history has used.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case, nothing new to implement there. Also fixed
+      the stale local `main` branch pointer left over from the previous session ended while
+      `HEAD` was detached (`origin/main` already had everything, just fast-forwarded local
+      `main` to match, same situation this file already has a note about below). This session
+      did another focused code-review pass over `backend/`, targeting call sites that read
+      external/third-party data with an assumed shape that prior sessions' passes hadn't
+      checked as closely. Found and fixed three more real, previously-untested crash bugs, each
+      with a regression test confirmed to fail against the pre-fix code and pass after:
+      1. `ToolRegistry.register()` (`app/mcp_client/registry.py`) indexed `spec["name"]`
+         unconditionally for both tools and prompts. A connected server - including the
+         official filesystem/git servers, which are third-party code this project doesn't
+         control, or a future remote deployment - is only guaranteed to return valid JSON, not
+         a well-formed tool/prompt spec; a spec missing `"name"` (or with a non-string one)
+         raised an uncaught `KeyError` at startup, before the chat loop even began, killing the
+         whole session before it could do anything. Added a `_spec_name()` helper that returns
+         `None` for a malformed spec, so `register()` now just skips it (a nameless tool can't
+         be routed or called anyway) instead of crashing. Verified for real against the actual
+         official filesystem MCP server subprocess (still registers all 14 of its real tools
+         correctly after the fix). 3 new regression tests (`tests/test_mcp_registry.py`).
+      2. `OllamaClient.chat_raw` (`app/llm/ollama_client.py`) checked `"message" not in data`
+         unconditionally after parsing the response body as JSON. A 200 response can be valid
+         JSON without being a JSON *object* - e.g. a bare `null` - and `in` on a non-iterable
+         scalar (`None`, a number, a bool) raises `TypeError` instead of failing the membership
+         check, so this used to crash straight out of `chat_raw` instead of raising the
+         documented `OllamaConnectionError` that `run_turn` relies on to keep the session alive
+         after a bad LLM response. Fixed by checking `isinstance(data, dict)` first. Mocked per
+         the project's testing convention (no live Ollama in this sandbox) - 1 new regression
+         test in `tests/test_ollama_client.py`.
+      3. `extract_tool_result_text()` (`app/main.py`), called from `handle_tool_calls` right
+         after a successful `call_tool`, indexed `result.get("content")` unconditionally. A
+         JSON-RPC response's `"result"` is only guaranteed present when there's no `"error"` -
+         it can legally be `null` or any other JSON value, not the `{content, isError}` shape a
+         well-formed `tools/call` result has, and that call site sits *outside* the
+         `try/except` that already handles a failed tool call, so a connected server sending a
+         null/malformed result raised an uncaught `AttributeError` and crashed the whole
+         session instead of reporting a normal (if uninformative) tool result. Fixed the same
+         way as the MCP client's own non-dict-response hardening from an earlier session:
+         treat a non-dict `result` as having no content. 2 new regression tests
+         (`tests/test_handle_tool_calls.py`), one at the unit level and one exercised through
+         the real `handle_tool_calls` call path.
+      All three verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end after each fix) and the full suite
+      (148 passed, up from 142 at the start of this session). None needed live Ollama - all
+      three are pure malformed-external-response bugs reachable with a hand-built payload, the
+      same pattern nearly every prior crash fix in this project's history has used; nothing new
+      to add to "Needs verification" below beyond what's already there.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
