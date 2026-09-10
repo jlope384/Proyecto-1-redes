@@ -1,3 +1,4 @@
+import json
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -7,6 +8,24 @@ from app.mcp_client.transports.stdio import StdioTransport
 def _make_transport(fake_process):
     with patch("app.mcp_client.transports.stdio.subprocess.Popen", return_value=fake_process):
         return StdioTransport("fake-cmd")
+
+
+def test_send_writes_one_newline_delimited_json_line_and_flushes():
+    # The MCP stdio transport spec is newline-delimited JSON-RPC on stdin/stdout: send()
+    # must write exactly one line (no embedded newlines from json.dumps) terminated by "\n",
+    # and flush immediately rather than relying on the pipe's default buffering - otherwise
+    # the message can sit in this process's write buffer instead of reaching the server
+    # subprocess. Previously untested (only exercised indirectly through real subprocesses).
+    fake_process = MagicMock()
+    transport = _make_transport(fake_process)
+
+    transport.send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+
+    written = fake_process.stdin.write.call_args[0][0]
+    assert written.endswith("\n")
+    assert written.count("\n") == 1
+    assert json.loads(written) == {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+    fake_process.stdin.flush.assert_called_once()
 
 
 def test_receive_parses_json_line():
