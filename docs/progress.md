@@ -691,6 +691,55 @@ Read this file at the start of every autonomous session and update the Status se
       same pattern nearly every prior crash fix in this project's history has used; nothing new
       to add to "Needs verification" below beyond what's already there.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case, nothing new to implement there. Also
+      corrected a stale claim in this file: the "Explicitly OUT of scope" section said
+      presentation prep was "still open" with only "an outline/talking points doc" possible
+      ahead of time, but that outline already exists and is thorough
+      (`docs/presentacion.md`, written in an earlier student-present session alongside the
+      web frontend work) - a full rubric-mapped script with a pre-demo checklist, a live
+      demo script per rubric section, anticipated difficulties/lessons-learned narration,
+      and expected Q&A. Nothing left to draft there; only the live demo itself still needs
+      the student (see the corrected note below).
+      Before another code-review pass, did an honest check of whether one was still likely
+      to find anything: read through every file this session's review passes (spanning many
+      prior sessions, see Done log above) hadn't specifically covered yet or had covered only
+      lightly - `mcp_server_sales/prompts/sales_prompts.py`, `resources/catalog_resource.py`,
+      `resources/policies.py`, `tools/sales_tools.py`'s actual business logic (not just its
+      crash-safety net), `app/mcp_client/adapters.py`, `app/mcp_client/protocol.py`,
+      `app/mcp_client/transports/http.py`, `mcp_server_sales/core/http_server.py`, and
+      `frontend/public/index.html`'s JS - and traced each remaining coverage gap reported by
+      `coverage report -m` back to its call site. Unlike every prior review-pass session,
+      this one came up clean: every previously-flagged-as-risky shape (non-hashable
+      lookups, non-dict arguments/params, non-string names) is already guarded at the
+      exact call sites checked, and the remaining uncovered lines are genuinely just
+      integration glue (real subprocess/network wiring exercised via
+      `python -m app.demo_mcp_sales` and the real-subprocess test files, not unit-mocked)
+      - the same category already noted as fine in earlier sessions' coverage passes. Worth
+      recording plainly: this is the first session where a dedicated bug-hunt pass found
+      zero new crash bugs, after eight consecutive sessions that each found two-to-five real
+      ones - a genuine (not assumed) signal that this class of defensive-coding work is
+      largely exhausted for the current feature set, not a reason to stop checking if the
+      feature set grows.
+      Redirected the session's effort to two real, previously-untested coverage gaps found
+      during that same pass instead of forcing another bug-hunt narrative:
+      1. `StdioTransport.send()` (`app/mcp_client/transports/stdio.py`) had zero direct unit
+         test coverage - only ever exercised indirectly through real subprocess integration
+         tests. Added a unit test asserting the actual wire contract the stdio MCP transport
+         spec requires (one newline-delimited JSON line, no embedded newlines, immediate
+         flush) - real behavior this project depends on but had never asserted directly.
+      2. `mcp_server_sales/__main__.py`'s `parse_args()` had zero test coverage, despite being
+         the literal Cloud Run container entrypoint (unmodified) documented in
+         `docs/spec/mcp_server_sales.md`'s "Remote deployment" section - the HOST/PORT
+         env-var defaults it reads are exactly what Cloud Run injects. Added 5 tests: the
+         stdio default, the HTTP-transport env-var defaults, explicit CLI flags overriding
+         those env vars, and argparse rejecting an unknown `--transport` value.
+      Both verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end) and manually via `curl` against
+      `python -m mcp_server_sales --transport http` (still serves correctly), plus the full
+      suite (154 passed, up from 148 at the start of this session). Neither needed live
+      Ollama - both are pure argument-parsing/framing tests with no LLM in the loop.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
@@ -813,9 +862,9 @@ https://github.com/apps/claude/installations/select_target.
 - Wireshark capture and analysis: done (see Done log above) — it needed the student's own
   local network/machine and was run interactively with the student present in this
   session, not by an autonomous cloud-sandbox agent.
-- Presentation prep: still open. Needs the student to actually give the presentation
-  (features, difficulties, lessons learned) — an outline/talking points doc can be
-  drafted ahead of time, but the demo itself needs the student.
+- Presentation prep: the outline/talking-points doc is done (`docs/presentacion.md` —
+  pre-demo checklist, rubric-mapped feature walkthrough, difficulties/lessons-learned
+  narration, anticipated Q&A). Giving the actual live presentation still needs the student.
 
 ## Working agreement for autonomous sessions
 - Aim for ~3 atomic, real, tested commits per run. No filler or empty commits just to
