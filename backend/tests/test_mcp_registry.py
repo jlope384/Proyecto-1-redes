@@ -155,3 +155,30 @@ def test_register_skips_prompt_spec_missing_name_instead_of_crashing():
     registry.register(sales)  # must not raise
 
     assert registry.client_for_prompt("resumen_pedido") is sales
+
+
+def test_register_skips_tool_spec_that_is_not_even_a_dict_instead_of_crashing():
+    # A connected server's tools/list result is only guaranteed to be valid JSON, not a list
+    # of objects - a bare string/number entry in the list used to reach `spec["name"]`/
+    # `spec.get("name")` and raise (TypeError on a str/int, or return the wrong thing for a
+    # string that happens to support .get via duck typing it doesn't actually have).
+    fs = FakeClient(
+        "filesystem",
+        ["not a spec at all", {"name": "read_file", "description": "d", "inputSchema": {}}],
+    )
+    registry = ToolRegistry()
+
+    registry.register(fs)  # must not raise
+
+    assert registry.client_for("read_file") is fs
+    names = {t["function"]["name"] for t in registry.ollama_tools()}
+    assert names == {"read_file"}
+
+
+def test_register_skips_prompt_spec_that_is_not_even_a_dict_instead_of_crashing():
+    sales = FakeClient("sales", [], prompts=[42, {"name": "resumen_pedido"}])
+    registry = ToolRegistry()
+
+    registry.register(sales)  # must not raise
+
+    assert registry.client_for_prompt("resumen_pedido") is sales
