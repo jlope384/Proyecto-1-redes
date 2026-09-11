@@ -740,6 +740,62 @@ Read this file at the start of every autonomous session and update the Status se
       suite (154 passed, up from 148 at the start of this session). Neither needed live
       Ollama - both are pure argument-parsing/framing tests with no LLM in the loop.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case (no images/binary documents in
+      `backend/mcp_server_sales/data/catalog.py`), nothing new to implement there. Also fixed
+      a stale local `main` branch pointer left over from the previous session, same recurring
+      situation this file already had two notes about (`origin/main` was already correct; a
+      detached-`HEAD` session just hadn't fast-forwarded local `main` before ending) - confirmed
+      via `git merge-base --is-ancestor origin/main HEAD` before fast-forwarding, pushed, no
+      commits lost. Then did another focused code-review pass over `backend/`, specifically
+      re-reading `app/mcp_client/client.py` (the hand-rolled MCP client core) end to end rather
+      than only the files earlier sessions' passes had flagged as risky. Found and fixed one
+      more real, previously-untested crash bug, the same "untrusted external response reaches a
+      lookup that assumes a specific shape" class nearly every prior session's fix in this
+      project's history has used, just one more instance of it:
+      1. `MCPClient.list_tools`/`list_resources`/`read_resource`/`list_prompts`
+         (`app/mcp_client/client.py`) all returned `(result or {}).get(<key>, [])`. `or` only
+         falls back to `{}` when `result` is *falsy* (`None`, `{}`) - a connected server
+         (including the official filesystem/git servers, third-party code this project doesn't
+         control, or a future remote deployment reached over the network) sending a truthy
+         non-dict `"result"` (e.g. a bare string or a list - legal JSON-RPC, since the spec
+         doesn't constrain `result`'s shape) reached `.get(...)` on that str/list and raised an
+         uncaught `AttributeError`. Reproduced the crash manually first (`result: "oops"` on a
+         `tools/list` response) before fixing it, same as every prior session's crash-fix
+         methodology here. Fixed all four methods to check `isinstance(result, dict)` explicitly
+         instead of relying on truthiness. 4 new regression tests
+         (`tests/test_mcp_client.py`), each confirmed to fail against the pre-fix code (verified
+         by temporarily stashing the fix and re-running) and pass after. This matters most for
+         `ToolRegistry.register()`, called at startup for every connected server - an
+         unguarded crash there would have killed the whole chatbot session before the chat loop
+         even began, the same severity class as the malformed-tool-spec bug fixed in an earlier
+         session.
+      Also added 2 more regression tests (`tests/test_mcp_registry.py`) closing a real coverage
+      gap found while re-reading `registry.py` alongside the fix above: `_spec_name()`'s
+      `isinstance(spec, dict)` guard (for a tools/prompts list entry that isn't even a dict -
+      e.g. a bare string) had correct behavior already but zero direct test coverage before -
+      every existing test only covered a dict-shaped-but-incomplete spec (missing/non-string
+      `"name"`), not a non-dict entry in the list at all. `registry.py` is now at 100% line
+      coverage (was 98%).
+      Went on to re-read every other module this session hadn't already covered
+      (`app/chat/session.py`, `app/logging/interaction_logger.py`,
+      `mcp_server_sales/tools/sales_tools.py`, `mcp_server_sales/resources/*.py`,
+      `mcp_server_sales/prompts/sales_prompts.py`, `mcp_server_sales/core/server.py`,
+      `app/main.py`'s connector functions and `run()`, `app/ui/console.py`,
+      `app/web/api.py`, and `frontend/public/index.html`'s JS) looking for the same bug
+      class (external/malformed data reaching an unguarded lookup or attribute access) one
+      more time - unlike the fix above, this came back clean: every other call site handling
+      external server/LLM/frontend-event data is already guarded the same way (an
+      `isinstance` check, a `.get()` with an explicit dict default, or a `try/except` net),
+      matching what an earlier session's own coverage-guided pass already concluded about the
+      rest of the tree.
+      Both changes verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end) and the full suite (160 passed, up
+      from 154 at the start of this session). Neither needed live Ollama - both are pure
+      malformed-external-response bugs/coverage gaps reachable with a hand-built payload, the
+      same pattern nearly every prior crash fix in this project's history has used; nothing new
+      to add to "Needs verification" below beyond what's already there.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
