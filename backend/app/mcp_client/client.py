@@ -61,9 +61,12 @@ class MCPClient:
     def list_tools(self):
         # `result` is whatever a connected server sent back - including the official
         # filesystem/git servers, which are third-party code this project doesn't control - so
-        # don't assume the expected key is present or that "result" itself isn't null/missing.
+        # don't assume the expected key is present, that "result" itself isn't null/missing, or
+        # even that it's a dict at all: `(result or {}).get(...)` only guards a *falsy* result
+        # (None, {}) - a truthy non-dict result (e.g. a malformed "result": "oops" or a list)
+        # would still raise an uncaught AttributeError from .get() on a str/list.
         result = self._call("tools/list")
-        return (result or {}).get("tools", [])
+        return result.get("tools", []) if isinstance(result, dict) else []
 
     def call_tool(self, name, arguments=None):
         result = self._call("tools/call", {"name": name, "arguments": arguments or {}})
@@ -71,15 +74,15 @@ class MCPClient:
 
     def list_resources(self):
         result = self._call("resources/list")
-        return (result or {}).get("resources", [])
+        return result.get("resources", []) if isinstance(result, dict) else []
 
     def read_resource(self, uri):
         result = self._call("resources/read", {"uri": uri})
-        return (result or {}).get("contents", [])
+        return result.get("contents", []) if isinstance(result, dict) else []
 
     def list_prompts(self):
         result = self._call("prompts/list")
-        return (result or {}).get("prompts", [])
+        return result.get("prompts", []) if isinstance(result, dict) else []
 
     def get_prompt(self, name, arguments=None):
         return self._call("prompts/get", {"name": name, "arguments": arguments or {}})

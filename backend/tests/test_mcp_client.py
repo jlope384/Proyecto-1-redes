@@ -126,6 +126,37 @@ def test_list_prompts_defaults_to_empty_list_on_missing_key():
     assert client.list_prompts() == []
 
 
+def test_list_tools_defaults_to_empty_list_on_non_dict_truthy_result():
+    # A malformed "result" that is truthy but not a dict (a bare string, here) used to bypass
+    # the old `(result or {}).get(...)` guard - `or` only falls back on a *falsy* value - and
+    # raise an uncaught AttributeError from calling .get() on a str.
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1, "result": "oops"}])
+    client = MCPClient(transport, server_name="sales")
+
+    assert client.list_tools() == []
+
+
+def test_list_resources_defaults_to_empty_list_on_non_dict_truthy_result():
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1, "result": ["oops"]}])
+    client = MCPClient(transport, server_name="sales")
+
+    assert client.list_resources() == []
+
+
+def test_read_resource_defaults_to_empty_list_on_non_dict_truthy_result():
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1, "result": "oops"}])
+    client = MCPClient(transport, server_name="sales")
+
+    assert client.read_resource("policy://envio") == []
+
+
+def test_list_prompts_defaults_to_empty_list_on_non_dict_truthy_result():
+    transport = FakeTransport([{"jsonrpc": "2.0", "id": 1, "result": 5}])
+    client = MCPClient(transport, server_name="sales")
+
+    assert client.list_prompts() == []
+
+
 def test_error_response_raises_mcp_protocol_error():
     transport = FakeTransport(
         [{"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "Method not found"}}]
