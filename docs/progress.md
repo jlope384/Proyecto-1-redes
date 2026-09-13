@@ -796,6 +796,59 @@ Read this file at the start of every autonomous session and update the Status se
       same pattern nearly every prior crash fix in this project's history has used; nothing new
       to add to "Needs verification" below beyond what's already there.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case, nothing new to implement there. Also fixed
+      a stale local `main` branch pointer (same recurring situation as the notes below -
+      `origin/main` was already correct, a detached-`HEAD` session just hadn't fast-forwarded
+      local `main`) - confirmed via `git merge-base --is-ancestor origin/main HEAD` first.
+      Since the last several sessions' blind crash-hunt passes over malformed-external-data
+      handling had come back clean (see the previous Done entry), this session tried a
+      genuinely different angle instead of repeating that same search: interactive-session
+      interrupt handling, which no prior session had looked at. Found and fixed three real,
+      previously-untested crash bugs, all the same "an interrupt during a blocking call
+      crashes the whole chatbot with a raw traceback instead of exiting/cancelling cleanly"
+      class, reproduced live before each fix (not just unit-tested) and confirmed via a
+      temporarily-reverted-fix run that each regression test actually fails against the
+      pre-fix code:
+      1. Closing stdin (Ctrl+D) or pressing Ctrl+C while `render_user_prompt()`'s blocking
+         `console.input()` call was waiting for a line raised an uncaught `EOFError`/
+         `KeyboardInterrupt` straight out of `run()`'s `while True` loop, printing a raw
+         Python traceback instead of exiting the same clean way typing `exit` already does -
+         a real, easy-to-hit rough edge for a live demo (a presenter interrupting the session,
+         or the session's stdin simply ending). Reproduced first with `echo -n "" |
+         python -m app.main` (real sales/filesystem/git subprocesses spawned, then a
+         traceback). Fixed by adding `read_user_input()`, which catches both and returns
+         `None` as a "the user wants to quit" sentinel, same as the existing `exit`/`quit`
+         check. 3 new unit tests (`tests/test_read_user_input.py`).
+      2. A `KeyboardInterrupt` raised while `run_turn` was waiting on `chat_raw` (a local
+         Ollama call can be slow - the exact scenario `render_thinking`'s spinner exists for)
+         propagated straight out of `run_turn` and crashed the whole session, instead of just
+         cancelling the in-flight turn the way an `OllamaConnectionError` already does. Fixed
+         by catching `KeyboardInterrupt` alongside the existing `OllamaConnectionError` catch,
+         with the same first-round `session.drop_last()` cleanup. Verified for real, not just
+         unit-tested: a scratch script patched `OllamaClient` with a fake whose `chat_raw`
+         sends the process a real `SIGINT` mid-call, run against the real sales/filesystem/git
+         subprocesses - confirmed a clean `[error] Interrupted - cancelled this turn.` line,
+         a clean process exit, and no leaked subprocesses afterward (`pgrep` came back empty).
+         2 new unit tests (`tests/test_run_turn.py`), using a small `InterruptingLLM` fake
+         (`chat_raw` raising `KeyboardInterrupt` isn't expressible via the existing `FakeLLM`'s
+         scripted-responses list, since `KeyboardInterrupt` is a `BaseException`, not an
+         `Exception`).
+      3. Same gap, one call site over: a `KeyboardInterrupt` during `handle_tool_calls`'
+         `client.call_tool(...)` (a slow or hung MCP server subprocess, or a remote one over
+         HTTP) also propagated out uncaught, since `run_turn` only wrapped the `chat_raw` call
+         in a `try/except`, not the `handle_tool_calls` call right after it. Fixed the same
+         way, wrapping `handle_tool_calls(...)` itself; unlike the `chat_raw` case, this
+         round's assistant/tool-calls message (and any earlier tool results already recorded
+         this round) are real completed steps and are kept rather than dropped. 1 new unit
+         test (`tests/test_run_turn.py`) with a `HangingClient` fake.
+      All three verified against the real `mcp_server_sales` subprocess via `python -m
+      app.demo_mcp_sales` (still runs correctly end-to-end after each fix) and the full suite
+      (166 passed, up from 160 at the start of this session). None needed live Ollama for the
+      unit tests, but fix #2 additionally got a real live check with a real `SIGINT` and real
+      MCP subprocesses (see above) - the strongest verification level available in this
+      sandbox, short of an actual local Ollama server.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
@@ -812,6 +865,14 @@ are now resolved (see Done log) — presentation prep is the only thing explicit
 that needs the student directly (see "Explicitly OUT of scope" below).
 
 ### Needs verification by the student on their own machine
+- New this session: the three Ctrl+C/EOF interrupt fixes (input-loop EOF, Ctrl+C during the
+  LLM call, Ctrl+C during a tool call) are unit-tested, and the LLM-call one was additionally
+  verified live in the sandbox with a real `SIGINT` against a faked-slow LLM client and real
+  MCP subprocesses (see the Done entry above) - the strongest check available without a real
+  Ollama server. Worth a real try on your machine anyway: hit Ctrl+C once while the "Thinking"
+  spinner is showing during an actual local Ollama call, and confirm you get a clean
+  `[error] Interrupted - cancelled this turn.` line and a working prompt back, not a crash.
+
 **Update from the first real local-machine session (this one):** confirmed live and working on
 the student's own Windows machine, real Ollama (`qwen2.5:7b`), real subprocesses for all three
 MCP servers: a plain conversational turn, context carried across turns, tool-calling for
