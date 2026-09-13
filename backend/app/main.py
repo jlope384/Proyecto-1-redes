@@ -274,6 +274,19 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def read_user_input():
+    """Read one line of user input, returning None if the user quit via Ctrl+C or closed
+    stdin (Ctrl+D) instead of typing 'exit'. Both used to propagate an uncaught
+    KeyboardInterrupt/EOFError straight out of render_user_prompt's blocking input() call,
+    printing a raw traceback and skipping the finally block's MCP-client cleanup message
+    entirely instead of exiting the same way 'exit' already does - a real rough edge for a
+    live demo, where a presenter interrupting the session with Ctrl+C is completely normal."""
+    try:
+        return render_user_prompt()
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+
 def run():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -298,8 +311,8 @@ def run():
 
         render_banner(llm_client.model, [client.server_name for client in mcp_clients])
         while True:
-            user_input = render_user_prompt()
-            if user_input.lower() in {"exit", "quit"}:
+            user_input = read_user_input()
+            if user_input is None or user_input.lower() in {"exit", "quit"}:
                 break
             if not user_input:
                 continue
