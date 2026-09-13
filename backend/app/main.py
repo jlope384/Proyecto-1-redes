@@ -232,7 +232,18 @@ def run_turn(llm_client, registry, session, logger, tools):
             return reply
 
         session.add_assistant_message(message.get("content", ""), tool_calls=message["tool_calls"])
-        handle_tool_calls(registry, message["tool_calls"], session, logger)
+        try:
+            handle_tool_calls(registry, message["tool_calls"], session, logger)
+        except KeyboardInterrupt:
+            # Same reasoning as the KeyboardInterrupt handling around chat_raw above, just for
+            # a tool call instead of the LLM call: a subprocess-based MCP server (or a remote
+            # one over HTTP) can be slow or hang, and Ctrl+C used to propagate straight out of
+            # handle_tool_calls and crash the whole session instead of just cancelling the
+            # turn. Unlike the chat_raw case, this round's assistant/tool_calls message (and
+            # any tool results already recorded for earlier calls in this round) are real
+            # completed steps and are kept rather than dropped.
+            render_error("Interrupted - cancelled this turn.")
+            return None
 
     reply = "Sorry, I couldn't finish that after several tool calls - could you rephrase it?"
     session.add_assistant_message(reply)

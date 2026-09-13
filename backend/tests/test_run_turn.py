@@ -40,6 +40,15 @@ class FakeClient:
         return self._result
 
 
+class HangingClient(FakeClient):
+    """Stands in for an MCP client whose call_tool never returns in time - a slow or hung
+    subprocess/remote server - so Ctrl+C during the wait raises KeyboardInterrupt out of
+    call_tool the way it would out of a real blocking read."""
+
+    def call_tool(self, name, arguments=None):
+        raise KeyboardInterrupt
+
+
 def make_registry(client):
     registry = ToolRegistry()
     registry.register(client)
@@ -200,3 +209,27 @@ def test_run_turn_reports_connection_error_on_a_later_round_without_crashing():
     assert reply is None
     # the earlier, successful round's messages are real interactions and are kept.
     assert session.messages[-1]["role"] == "tool"
+
+
+def test_run_turn_reports_keyboard_interrupt_during_a_tool_call_without_crashing():
+    client = HangingClient(
+        "sales",
+        [{"name": "buscar_productos", "description": "d", "inputSchema": {}}],
+        result=None,
+    )
+    registry = make_registry(client)
+    session = ChatSession()
+    session.add_user_message("busca")
+    logger = logging.getLogger("test-run-turn-keyboard-interrupt-tool-call")
+
+    llm = FakeLLM(
+        [{"role": "assistant", "content": "", "tool_calls": [tool_call("buscar_productos")]}]
+    )
+
+    reply = run_turn(llm, registry, session, logger, tools=registry.ollama_tools())
+
+    assert reply is None
+    # the assistant's tool_calls message from this round is a real interaction and is kept,
+    # even though the call it asked for never got to finish.
+    assert session.messages[-1]["role"] == "assistant"
+    assert session.messages[-1]["tool_calls"] == [tool_call("buscar_productos")]
