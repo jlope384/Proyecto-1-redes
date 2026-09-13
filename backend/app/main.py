@@ -214,6 +214,16 @@ def run_turn(llm_client, registry, session, logger, tools):
             if round_num == 0:
                 session.drop_last()
             return None
+        except KeyboardInterrupt:
+            # A local Ollama call can be slow, and interrupting a slow wait with Ctrl+C is a
+            # completely normal thing to do - previously this propagated straight out of
+            # run_turn (and, above it, the whole `while True` loop in run()), crashing the
+            # entire chatbot session with a raw traceback instead of just cancelling the
+            # turn currently in flight the same way an OllamaConnectionError already does.
+            render_error("Interrupted - cancelled this turn.")
+            if round_num == 0:
+                session.drop_last()
+            return None
         log_interaction(logger, "llm", "response", message)
 
         if not message.get("tool_calls"):

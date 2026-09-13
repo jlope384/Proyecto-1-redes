@@ -125,6 +125,58 @@ def test_run_turn_reports_connection_error_and_drops_user_message_on_first_round
     assert session.messages == []
 
 
+class InterruptingLLM:
+    """Stands in for OllamaClient.chat_raw raising KeyboardInterrupt - unlike FakeLLM's
+    scripted-responses list, this can't reuse the `isinstance(response, Exception)` check
+    there, since KeyboardInterrupt is a BaseException, not an Exception, and needs to
+    actually propagate out of chat_raw the way a real Ctrl+C during a slow call would."""
+
+    def __init__(self, responses_before_interrupt=()):
+        self._responses = list(responses_before_interrupt)
+        self.calls = []
+
+    def chat_raw(self, messages, tools=None):
+        self.calls.append({"messages": list(messages), "tools": tools})
+        if self._responses:
+            return self._responses.pop(0)
+        raise KeyboardInterrupt
+
+
+def test_run_turn_reports_keyboard_interrupt_and_drops_user_message_on_first_round():
+    session = ChatSession()
+    session.add_user_message("hello")
+    logger = logging.getLogger("test-run-turn-keyboard-interrupt")
+
+    reply = run_turn(InterruptingLLM(), ToolRegistry(), session, logger, tools=[])
+
+    assert reply is None
+    assert session.messages == []
+
+
+def test_run_turn_reports_keyboard_interrupt_on_a_later_round_without_crashing():
+    client = FakeClient(
+        "sales",
+        [{"name": "buscar_productos", "description": "d", "inputSchema": {}}],
+        result={"content": [{"type": "text", "text": "ok"}]},
+    )
+    registry = make_registry(client)
+    session = ChatSession()
+    session.add_user_message("busca")
+    logger = logging.getLogger("test-run-turn-keyboard-interrupt-later")
+
+    llm = InterruptingLLM(
+        responses_before_interrupt=[
+            {"role": "assistant", "content": "", "tool_calls": [tool_call("buscar_productos")]}
+        ]
+    )
+
+    reply = run_turn(llm, registry, session, logger, tools=registry.ollama_tools())
+
+    assert reply is None
+    # the earlier, successful round's messages are real interactions and are kept.
+    assert session.messages[-1]["role"] == "tool"
+
+
 def test_run_turn_reports_connection_error_on_a_later_round_without_crashing():
     client = FakeClient(
         "sales",
