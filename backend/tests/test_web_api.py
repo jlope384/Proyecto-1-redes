@@ -172,6 +172,24 @@ def test_chat_endpoint_reports_error_event_for_malformed_prompt_result():
     assert llm.calls == []
 
 
+def test_chat_endpoint_rejects_empty_message_without_calling_the_llm():
+    # The CLI host (app/main.py) already skips an empty/whitespace-only line before doing
+    # anything with it; the frontend blocks this client-side too, but that's not a
+    # server-side guard - any other client posting directly to /api/chat previously burned
+    # a full LLM round-trip and added a blank turn to the shared session history.
+    llm = FakeLLM([])
+    app = make_app(llm)
+
+    with TestClient(app) as client:
+        response = client.post("/api/chat", json={"message": "   "})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reply"] == ""
+    assert body["events"] == []
+    assert llm.calls == []
+
+
 def test_servers_endpoint_lists_model_and_connected_servers():
     tool_client = FakeClient("sales", tools=[], result=None)
     llm = FakeLLM([])

@@ -209,8 +209,17 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
       });
-      const data = await response.json();
       thinking.remove();
+      if (!response.ok) {
+        // fetch() only rejects on a network failure, not on a non-2xx status (e.g. a 422
+        // from FastAPI request validation, or a raw 500) - without this check the bad
+        // response's body was parsed and rendered as if it were a normal ChatResponse,
+        // which silently produced no bubble and no error at all since data.reply/
+        // data.events are just undefined on that shape.
+        addError(`Server error (${response.status}): ${await response.text()}`);
+        return;
+      }
+      const data = await response.json();
       renderEvents(data.events || []);
       if (data.reply) {
         addBubble("bot", data.reply);

@@ -130,8 +130,16 @@ def create_app(llm_client=None, registry=None, session=None, logger=None, tools=
     @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
     def chat(request: ChatRequest):
         session = state["session"]
-        text = request.message
+        text = request.message.strip()
         events = []
+
+        # The CLI host (app/main.py:338) already skips an empty/whitespace-only line
+        # before doing anything with it; the frontend also blocks this client-side
+        # (frontend/public/index.html), but that's not a server-side guard - any other
+        # client hitting the API directly would otherwise burn a full LLM round-trip and
+        # add a blank turn to the shared session history.
+        if not text:
+            return ChatResponse(reply="", events=[])
 
         prompt_command = parse_prompt_command(text)
         if prompt_command is not None:
