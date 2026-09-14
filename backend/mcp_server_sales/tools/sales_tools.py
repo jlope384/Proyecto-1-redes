@@ -88,6 +88,13 @@ def generar_enlace_de_pago(sku, talla, cantidad):
     product = find_product(sku)
     if product is None:
         raise ValueError(f"SKU desconocido: {sku}")
+    # `cantidad <= 0` alone doesn't check the type the inputSchema declares
+    # ("integer"): a fractional value like 2.5 passed the check and produced a
+    # valid-looking payment link/total for a non-integer quantity of clothing, and a JSON
+    # boolean silently passed as quantity 1 (Python's bool is an int subclass). Reject
+    # both explicitly instead of only rejecting non-positive integers.
+    if not isinstance(cantidad, int) or isinstance(cantidad, bool):
+        raise ValueError(f"Cantidad invalida: {cantidad!r}. Debe ser un entero positivo.")
     if cantidad <= 0:
         raise ValueError(f"Cantidad invalida: {cantidad}. Debe ser un entero positivo.")
     stock = INVENTORY.get(sku, {}).get(talla, 0)

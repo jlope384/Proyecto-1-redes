@@ -143,6 +143,45 @@ def test_tools_call_generar_enlace_de_pago_rejects_non_positive_cantidad():
     assert "cantidad" in result["content"][0]["text"].lower()
 
 
+def test_tools_call_generar_enlace_de_pago_rejects_fractional_cantidad():
+    # The inputSchema declares "cantidad" as "integer", but the old check
+    # (`cantidad <= 0`) let a fractional value like 2.5 through, producing a valid-looking
+    # payment link and total for a non-integer quantity of clothing.
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 47,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                "arguments": {"sku": "CAM-001", "talla": "M", "cantidad": 2.5},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "cantidad" in result["content"][0]["text"].lower()
+
+
+def test_tools_call_generar_enlace_de_pago_rejects_boolean_cantidad():
+    # Python's bool is an int subclass, so `True <= 0` is False and `True` silently passed
+    # as a valid quantity of 1 before this fix.
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 48,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                "arguments": {"sku": "CAM-001", "talla": "M", "cantidad": True},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    assert "cantidad" in result["content"][0]["text"].lower()
+
+
 def test_tools_call_explicit_null_arguments_returns_tool_error_not_crash():
     # `params.get("arguments", {})` only falls back to {} when the key is missing entirely -
     # an explicit `"arguments": null` (valid JSON-RPC) previously reached
