@@ -849,6 +849,74 @@ Read this file at the start of every autonomous session and update the Status se
       MCP subprocesses (see above) - the strongest verification level available in this
       sandbox, short of an actual local Ollama server.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case, nothing new to implement there. Also fixed
+      a stale local `main` branch pointer (same recurring situation as the notes above -
+      `origin/main` was already correct, a detached-`HEAD` session just hadn't fast-forwarded
+      local `main`), confirmed via `git merge-base --is-ancestor origin/main HEAD` first.
+      Since the last several sessions' blind "malformed external data" crash-hunt passes had
+      run dry (a prior session's own coverage-guided pass found zero new bugs that way), this
+      session used a dedicated review agent to look for a genuinely different class of gap
+      before writing any code, rather than repeating that same search a ninth time. It found
+      four real, concrete items; implemented and tested four of them (all verified against the
+      real `mcp_server_sales` subprocess via `python -m app.demo_mcp_sales`, and the two web
+      ones additionally against a real live `python -m app.web` process with all three real
+      MCP server subprocesses connected, via `curl` and a real headless-Chromium session
+      through Playwright):
+      1. **A genuinely new bug class: hangs, not crashes.** `StdioTransport.receive()`
+         (`app/mcp_client/transports/stdio.py`) called `stdout.readline()` with no timeout at
+         all - a stuck or unresponsive server subprocess (sales/filesystem/git) blocked
+         forever with no recovery. The terminal host's `KeyboardInterrupt` handling (added two
+         sessions ago) only helps if a human is present to press Ctrl+C; the web host
+         (`app/web/api.py`) has no such escape hatch at all. Fixed by reading each line in a
+         short-lived per-call thread and raising `ConnectionError` after a configurable
+         timeout (default 30s) instead of blocking indefinitely. 2 new tests
+         (`tests/test_stdio_transport.py`) prove both that a genuinely slow (not just
+         instantly-failing) `readline()` triggers the timeout, and that a fast-but-not-instant
+         one still succeeds; confirmed to fail against the pre-fix code (which doesn't even
+         accept a `timeout` argument).
+      2. `generar_enlace_de_pago`'s `inputSchema` declares `cantidad` as an integer, but the
+         handler only checked `cantidad <= 0`. A fractional value like `2.5` passed through
+         silently and produced a valid-looking payment link/total for a non-integer quantity
+         of clothing; a JSON boolean also silently passed as quantity `1` (Python's `bool` is
+         an `int` subclass). Fixed with an explicit type check alongside the existing
+         positive-quantity one. 2 new regression tests (`tests/test_mcp_server_sales.py`),
+         confirmed to fail against the pre-fix code.
+      3. `/api/chat` (`app/web/api.py`) had no server-side guard against an empty/
+         whitespace-only message - the CLI host and the frontend both already skip this case,
+         but a client posting directly to the API burned a full LLM round-trip and added a
+         blank turn to the shared session history. Separately, the frontend's `fetch()` call
+         (`frontend/public/index.html`) never checked `response.ok` before parsing the body,
+         so any non-2xx response (a 422 from request validation, a raw 500) silently rendered
+         nothing instead of the existing error bubble. Fixed both; verified the frontend fix
+         for real with a live browser (Playwright against the real running web app, with
+         `/api/chat` intercepted to return a 500) - confirmed `[error] Server error (500):
+         boom` now shows up instead of nothing. 1 new backend regression test
+         (`tests/test_web_api.py`).
+      4. FastAPI runs a sync `def` route handler like `chat()` in a thread-pool worker, so two
+         overlapping `POST /api/chat` requests could genuinely run in parallel threads against
+         the one shared `ChatSession` with no synchronization - interleaving message order
+         (corrupting what gets sent to Ollama) and racing on `events_since`'s `start_index`
+         bookkeeping. A single conversation only makes sense processed one turn at a time
+         anyway, so the whole turn (prompt resolution through `run_turn`) is now wrapped in a
+         lock, injectable via `create_app(turn_lock=...)` purely so a test can observe it.
+         1 new regression test (`tests/test_web_api.py`) that forces genuine thread overlap via
+         events (never sleeps, to avoid flakiness) and was confirmed to fail against the
+         pre-fix code with an interleaved message order (`user, user, assistant, assistant`
+         instead of `user, assistant, user, assistant`).
+      Full suite: 172 passed, up from 166 at the start of this session. None of the four needed
+      live Ollama - all are either pure protocol/transport-layer, business-logic, or
+      concurrency bugs with no LLM in the loop. Worth a look on the student's own machine
+      anyway (added to "Needs verification" below): the stdio timeout's 30s default was only
+      exercised against fast local subprocesses in this sandbox, never a genuinely slow
+      real-world MCP call.
+      Not picked up this session (left for later, lower priority than what was fixed above):
+      the same review pass also flagged that a *second* concurrent chat request landing while
+      a first is mid-turn currently just queues behind the lock rather than returning a fast
+      "busy" response - acceptable for a single-user course demo (the actual scenario this
+      project targets), but would need revisiting if this ever grew into a genuinely
+      multi-user deployment.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
@@ -865,6 +933,15 @@ are now resolved (see Done log) — presentation prep is the only thing explicit
 that needs the student directly (see "Explicitly OUT of scope" below).
 
 ### Needs verification by the student on their own machine
+- New this session: `StdioTransport`'s new 30s read timeout was verified with a real
+  (if simulated) hang and unit-tested, and with the real sales/filesystem/git subprocesses
+  under normal, fast operation - but this sandbox has no genuinely slow MCP call to test the
+  timeout against in practice. Worth keeping in mind during a real session: if you ever see a
+  new `[error]`/exception mentioning "Timed out after 30.0s waiting for a response from the
+  MCP server", that means some tool call (most likely a slow `git`/filesystem operation on a
+  large repo, or a cold `npx`/`uvx` first-run download racing the timeout) genuinely took
+  longer than 30s - not a false positive, and worth raising the default in
+  `app/mcp_client/transports/stdio.py` if it happens routinely on your machine.
 - New this session: the three Ctrl+C/EOF interrupt fixes (input-loop EOF, Ctrl+C during the
   LLM call, Ctrl+C during a tool call) are unit-tested, and the LLM-call one was additionally
   verified live in the sandbox with a real `SIGINT` against a faked-slow LLM client and real
