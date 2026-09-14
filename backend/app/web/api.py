@@ -10,6 +10,7 @@ only new piece is `events_since`, which reconstructs a JSON-friendly list of "a 
 needed to expose that shape itself, since the CLI renders each event live as it happens instead
 of collecting them.
 """
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -78,12 +79,17 @@ def events_since(session, start_index):
     return events
 
 
-def create_app(llm_client=None, registry=None, session=None, logger=None, tools=None, mcp_clients=None, connectors=None):
+def create_app(
+    llm_client=None, registry=None, session=None, logger=None, tools=None, mcp_clients=None, connectors=None,
+    turn_lock=None,
+):
     """App factory. Production use (`python -m app.web`) calls this with no arguments, so the
     lifespan below connects everything for real on startup - exactly like `app.main.run()`
     does. Tests pass fakes for `llm_client`/`registry`/`session`/`logger`/`tools` directly,
     which skips real connections entirely (no subprocess, no network) while still exercising
-    the actual request-handling code below."""
+    the actual request-handling code below. `turn_lock` is injectable too, purely so a test
+    can observe exactly when a request reaches it, without which testing the real overlap
+    the lock guards against would deadlock the test itself."""
     state = {
         "llm_client": llm_client,
         "registry": registry,
@@ -91,6 +97,15 @@ def create_app(llm_client=None, registry=None, session=None, logger=None, tools=
         "logger": logger,
         "tools": tools,
         "mcp_clients": mcp_clients or [],
+        # FastAPI runs a sync `def` route handler like chat() below in a thread-pool
+        # worker, not on the event loop - two overlapping POST /api/chat requests can run
+        # in parallel threads, both reading/appending to the one shared ChatSession with
+        # no synchronization. That interleaves message order (corrupting what gets sent
+        # to Ollama) and breaks events_since's start_index bookkeeping. A single
+        # conversation can only make sense processed one turn at a time anyway, so a lock
+        # around the whole turn - not per-ChatSession-method locking, which wouldn't stop
+        # two turns' messages from interleaving - is the correct fix.
+        "turn_lock": turn_lock or threading.Lock(),
     }
 
     @asynccontextmanager
@@ -141,28 +156,34 @@ def create_app(llm_client=None, registry=None, session=None, logger=None, tools=
         if not text:
             return ChatResponse(reply="", events=[])
 
-        prompt_command = parse_prompt_command(text)
-        if prompt_command is not None:
-            name, arguments = prompt_command
-            try:
-                prompt_client = state["registry"].client_for_prompt(name)
-                result = prompt_client.get_prompt(name, arguments)
-                text = prompt_text(result)
-            except Exception as exc:  # UnknownPromptError, MCPProtocolError, bad
-                # arguments, or a malformed prompts/get result shape (e.g. a message
-                # missing "content"/"text") that would otherwise raise an uncaught
-                # KeyError straight out of prompt_text.
-                return ChatResponse(reply="", events=[{"type": "error", "text": str(exc)}])
-            events.append({"type": "prompt", "name": name, "text": text})
+        # See turn_lock's definition above: serializes whole turns (prompt resolution
+        # through run_turn) against the one shared ChatSession, so two overlapping
+        # requests can't interleave their messages into it or race on start_index.
+        with state["turn_lock"]:
+            prompt_command = parse_prompt_command(text)
+            if prompt_command is not None:
+                name, arguments = prompt_command
+                try:
+                    prompt_client = state["registry"].client_for_prompt(name)
+                    result = prompt_client.get_prompt(name, arguments)
+                    text = prompt_text(result)
+                except Exception as exc:  # UnknownPromptError, MCPProtocolError, bad
+                    # arguments, or a malformed prompts/get result shape (e.g. a message
+                    # missing "content"/"text") that would otherwise raise an uncaught
+                    # KeyError straight out of prompt_text.
+                    return ChatResponse(reply="", events=[{"type": "error", "text": str(exc)}])
+                events.append({"type": "prompt", "name": name, "text": text})
 
-        start_index = len(session.messages)
-        session.add_user_message(text)
-        reply = run_turn(state["llm_client"], state["registry"], session, state["logger"], state["tools"])
-        events += events_since(session, start_index + 1)
-        if reply is None:
-            events.append({"type": "error", "text": "Could not reach the LLM. Check that Ollama is running."})
-            return ChatResponse(reply="", events=events)
-        return ChatResponse(reply=reply, events=events)
+            start_index = len(session.messages)
+            session.add_user_message(text)
+            reply = run_turn(state["llm_client"], state["registry"], session, state["logger"], state["tools"])
+            events += events_since(session, start_index + 1)
+            if reply is None:
+                events.append(
+                    {"type": "error", "text": "Could not reach the LLM. Check that Ollama is running."}
+                )
+                return ChatResponse(reply="", events=events)
+            return ChatResponse(reply=reply, events=events)
 
     if FRONTEND_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static")

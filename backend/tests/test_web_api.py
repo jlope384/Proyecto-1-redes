@@ -1,4 +1,5 @@
 import logging
+import threading
 
 from fastapi.testclient import TestClient
 
@@ -188,6 +189,96 @@ def test_chat_endpoint_rejects_empty_message_without_calling_the_llm():
     assert body["reply"] == ""
     assert body["events"] == []
     assert llm.calls == []
+
+
+class ObservableLock:
+    """Wraps a real Lock but signals `acquire_attempted` the moment a thread reaches
+    `__enter__`, before it actually blocks on the underlying lock. Used only so the test
+    below can deterministically know the second request has reached turn_lock (and is
+    presumably blocked behind the first, still-in-progress turn) without an arbitrary
+    sleep - and, crucially, without deadlocking the test itself the way waiting for the
+    second request to *finish* would (it can't finish until the first turn releases the
+    lock)."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.acquire_attempted = threading.Event()
+
+    def __enter__(self):
+        self.acquire_attempted.set()
+        self._lock.acquire()
+
+    def __exit__(self, *exc_info):
+        self._lock.release()
+
+
+def test_concurrent_chat_requests_do_not_interleave_the_shared_session():
+    # FastAPI runs a sync `def` route handler like chat() in a thread-pool worker, so two
+    # overlapping POST /api/chat calls can genuinely run in parallel threads against the
+    # one shared ChatSession. Without a lock around a whole turn, the second request's
+    # add_user_message could land in the middle of the first request's still-in-progress
+    # turn, corrupting the message order sent to Ollama. This test forces that overlap for
+    # real, driving both requests from background threads and using events (not sleeps)
+    # to pin down the exact interleaving: "first" is let in, blocks mid-turn, "second" is
+    # only then started and confirmed to be genuinely contending for turn_lock (not just
+    # racing to acquire it uncontended first) before "first" is allowed to finish.
+    first_call_started = threading.Event()
+    first_may_finish = threading.Event()
+
+    class SlowFirstLLM(FakeLLM):
+        def chat_raw(self, messages, tools=None):
+            is_first_call = len(self.calls) == 0
+            result = super().chat_raw(messages, tools=tools)
+            if is_first_call:
+                first_call_started.set()
+                assert first_may_finish.wait(timeout=2), "test never released the first turn"
+            return result
+
+    llm = SlowFirstLLM(
+        [
+            {"role": "assistant", "content": "reply-to-first"},
+            {"role": "assistant", "content": "reply-to-second"},
+        ]
+    )
+    session = ChatSession(system_prompt="system")
+    turn_lock = ObservableLock()
+    app = create_app(
+        llm_client=llm, registry=ToolRegistry(), session=session, logger=logging.getLogger("t"), tools=[],
+        turn_lock=turn_lock,
+    )
+    results = {}
+
+    def call(label, message):
+        with TestClient(app) as client:
+            results[label] = client.post("/api/chat", json={"message": message}).json()
+
+    first_thread = threading.Thread(target=call, args=("first", "first"))
+    first_thread.start()
+    assert first_call_started.wait(timeout=2), "first request never reached the LLM call"
+
+    second_thread = threading.Thread(target=call, args=("second", "second"))
+    second_thread.start()
+    # Confirms the second request is genuinely blocked behind the first (contended), not
+    # just happening to run after it by luck of thread scheduling.
+    assert turn_lock.acquire_attempted.wait(timeout=2), "second request never reached turn_lock"
+
+    first_may_finish.set()
+    first_thread.join(timeout=3)
+    second_thread.join(timeout=3)
+    assert not first_thread.is_alive() and not second_thread.is_alive()
+
+    assert results["first"]["reply"] == "reply-to-first"
+    assert results["second"]["reply"] == "reply-to-second"
+    # The session must show "first" fully resolved (user + assistant) before "second"
+    # even appears - not both user messages back to back, which is what an interleaved,
+    # unlocked run would produce.
+    turns = [(m["role"], m.get("content")) for m in session.messages[1:]]  # [1:] skips the system prompt
+    assert turns == [
+        ("user", "first"),
+        ("assistant", "reply-to-first"),
+        ("user", "second"),
+        ("assistant", "reply-to-second"),
+    ]
 
 
 def test_servers_endpoint_lists_model_and_connected_servers():
