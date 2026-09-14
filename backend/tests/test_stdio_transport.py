@@ -1,13 +1,14 @@
 import json
 import subprocess
+import time
 from unittest.mock import MagicMock, patch
 
 from app.mcp_client.transports.stdio import StdioTransport
 
 
-def _make_transport(fake_process):
+def _make_transport(fake_process, timeout=30.0):
     with patch("app.mcp_client.transports.stdio.subprocess.Popen", return_value=fake_process):
-        return StdioTransport("fake-cmd")
+        return StdioTransport("fake-cmd", timeout=timeout)
 
 
 def test_send_writes_one_newline_delimited_json_line_and_flushes():
@@ -115,6 +116,42 @@ def test_init_resolves_command_via_shutil_which():
 
     args, kwargs = popen.call_args
     assert args[0][0] == r"C:\nodejs\npx.cmd"
+
+
+def test_receive_raises_connection_error_on_timeout_when_server_hangs():
+    # A server subprocess stuck processing a request (or one that never replies at all)
+    # previously blocked receive() forever, with no way for the caller to recover - the
+    # host's Ctrl+C handling only helps if a human is present, and the web host has no
+    # such escape hatch. A short timeout (0.05s) keeps this test fast while still proving
+    # a genuinely slow readline() (simulated via time.sleep, not a canned return value) is
+    # what triggers it, not just a mocked instant failure.
+    fake_process = MagicMock()
+    fake_process.stdout.readline.side_effect = lambda: time.sleep(2)
+    transport = _make_transport(fake_process, timeout=0.05)
+
+    started = time.monotonic()
+    try:
+        transport.receive()
+    except ConnectionError as exc:
+        assert "timed out" in str(exc).lower()
+        assert time.monotonic() - started < 1.5
+        return
+    assert False, "expected ConnectionError on timeout"
+
+
+def test_receive_succeeds_when_response_arrives_before_timeout():
+    # The counterpart to the timeout test above: a real (if brief) delay before the line
+    # arrives must not itself be mistaken for a hang, as long as it beats the timeout.
+    fake_process = MagicMock()
+
+    def _slow_readline():
+        time.sleep(0.05)
+        return '{"jsonrpc": "2.0", "id": 1, "result": {}}\n'
+
+    fake_process.stdout.readline.side_effect = _slow_readline
+    transport = _make_transport(fake_process, timeout=2.0)
+
+    assert transport.receive() == {"jsonrpc": "2.0", "id": 1, "result": {}}
 
 
 def test_init_falls_back_to_raw_command_if_not_found_on_path():
