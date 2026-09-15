@@ -133,9 +133,11 @@ Response:
 {"sku": "CAM-001", "talla": "M", "cantidad": 1, "total": 249.0, "enlace_pago": "https://pagos.tienda-demo.local/checkout/CAM-001-M-1", "requiere_confirmacion_cliente": true}
 ```
 
-Errors (`isError: true`): `"SKU desconocido: <sku>"` if the SKU doesn't exist, or
-`"Stock insuficiente para <sku> talla <talla>: hay <stock>, se pidieron <cantidad>"` if the
-requested quantity exceeds stock for that size.
+Errors (`isError: true`): `"SKU desconocido: <sku>"` if the SKU doesn't exist,
+`"Cantidad invalida: <cantidad>. Debe ser un entero positivo."` if `cantidad` isn't a
+positive integer (a fractional value, a non-positive value, or a JSON boolean, which Python
+treats as an `int` subclass), or `"Stock insuficiente para <sku> talla <talla>: hay <stock>,
+se pidieron <cantidad>"` if the requested quantity exceeds stock for that size.
 
 ## Prompts (`prompts/list`, `prompts/get`)
 
