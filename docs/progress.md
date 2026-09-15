@@ -917,6 +917,77 @@ Read this file at the start of every autonomous session and update the Status se
       project targets), but would need revisiting if this ever grew into a genuinely
       multi-user deployment.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case (`mcp_server_sales/data/catalog.py` still has
+      no images/binary documents), nothing new to implement there. Also fixed the recurring
+      detached-`HEAD` housekeeping issue this file already has three notes about
+      (`origin/main` was already correct at the same commit as `HEAD`; just reattached local
+      `main` to it, no commits lost).
+      Before writing any code, did an honest gut-check on whether another crash-hunt pass was
+      likely to find anything real, since the last two sessions' passes had already moved on to
+      progressively narrower angles (interrupt handling, then hangs/concurrency/validation)
+      after an earlier session found zero new bugs on a straight re-read. Read through
+      `app/main.py`, `app/llm/ollama_client.py`, `app/web/api.py`,
+      `mcp_server_sales/tools/sales_tools.py`, `mcp_server_sales/core/server.py`,
+      `mcp_server_sales/core/http_server.py`, `mcp_server_sales/prompts/sales_prompts.py`,
+      `app/chat/session.py`, `app/mcp_client/client.py`, `app/mcp_client/registry.py`,
+      `app/mcp_client/adapters.py`, `app/logging/interaction_logger.py`, and
+      `frontend/public/index.html`'s JS end to end, specifically checking a few concrete
+      hypotheses (a shared-mutable-state race in the `ThreadingHTTPServer` sales endpoint
+      mirroring the web API's concurrency bug from last session — checked: `handle_message`
+      and every tool handler are pure functions over read-only catalog data, no race; a
+      `spec["name"]` unguarded index in `app/mcp_client/adapters.py` — checked: only ever
+      called after `registry.py`'s `_spec_name()` already validated the spec; a possible
+      `undefined.length` crash in the frontend's `tool_result` event rendering — checked: every
+      `add_tool_result()` call site in `app/main.py` always passes a string, so the frontend's
+      assumption holds). This came back clean, same conclusion as the session that first found
+      zero new bugs: this class of defensive-coding work is genuinely exhausted for the current
+      feature set, not something to keep forcing a narrative around.
+      Redirected the session to a real, different kind of gap instead: documentation accuracy
+      against the actual current code, which is directly graded per the assignment rubric
+      (`docs/spec/mcp_server_sales.md` is rubric item 8; `docs/report/informe.md` section 8.1
+      explicitly claims the spec doc "se mantiene actualizado en cada sesión que toca el
+      servidor," so a drift there is a real, checkable gap, not a stylistic nit). Found and
+      fixed two:
+      1. `docs/spec/mcp_server_sales.md`'s `generar_enlace_de_pago` section still only listed
+         the original two error cases (unknown SKU, insufficient stock); the non-integer/
+         non-positive `cantidad` validation added two sessions ago (`sales_tools.py`) was
+         implemented and tested but never documented there. Added the missing error case.
+      2. `docs/presentacion.md`'s "lecciones aprendidas" section cited "133 tests en total,"
+         accurate when that section was written but stale after several sessions of crash-fix
+         work since (172 now) - a wrong number the student would actually say out loud during
+         the graded live presentation. Fixed.
+      Verified both by cross-checking against the actual current code/test count, not just
+      read-through: full suite re-run (172 passed, same as before this session - no code
+      changed, only docs) and `sales_tools.py`'s actual `generar_enlace_de_pago` validation
+      logic re-read line by line to get the new spec wording right.
+      Only two commits this session, deliberately - per the working agreement, a third
+      code-shaped commit was not manufactured just to hit a target count when the review above
+      didn't turn up a third genuine, real item. See the note below for what this means for the
+      next session.
+
+### A note for the next autonomous session: the low-hanging fruit is gone
+Two sessions in a row now (this one and the one before it, see the Done entries above) did a
+dedicated review pass over the whole `backend/` tree looking for real crash/robustness bugs
+and came back with nothing new. Combined with the eight-ish prior sessions that *did* keep
+finding real bugs, each in progressively narrower categories (malformed external data, then
+hangs, then interrupts, then concurrency), this is a genuine signal, not a fluke: the current
+feature set's defensive-coding surface is largely covered. A future session should still do a
+quick honest check (don't assume it's covered without looking), but should not force a
+crash-hunt narrative if a real, careful read doesn't turn up anything - see the working
+agreement's "no filler" rule. Real remaining avenues, roughly in order of how likely they are
+to produce genuine work:
+- Documentation-vs-code drift, the same way this session found two instances: re-read
+  `docs/spec/mcp_server_sales.md`, `README.md`, `docs/report/informe.md`, and
+  `docs/presentacion.md` against the actual current code/test count/behavior, not just for
+  internal consistency.
+- The binary-resource backlog item, if the catalog's scope ever actually grows (still blocked,
+  re-checked again this session - see below).
+- A genuinely new angle on robustness this project's history hasn't tried yet, if one occurs to
+  you with real reasoning behind it (not "let's grep for more `.get()` calls").
+- Otherwise, most of what's left needs the student directly - see "Needs verification" and
+  "Explicitly OUT of scope" below.
+
 ### Backlog (work in this order, roughly 3 real+tested commits per session)
 - [ ] Consider adding more MCP resource shapes beyond text/JSON (e.g. a `blob`/binary resource)
       only if a real use case for one shows up in the sales server's scope — no forced work here
