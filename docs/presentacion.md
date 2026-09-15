@@ -105,7 +105,7 @@ reales y se debuggearon con evidencia, no que "todo funcionó a la primera":
   (`transports/stdio.py`, `transports/http.py`) fue la decisión de diseño que más rindió:
   permitió correr el mismo servidor local y remoto, y agregar HTTP sin tocar ni un
   archivo de `tools/`, `resources/` o `prompts/`.
-- Los tests automatizados (133 en total) dan confianza en la lógica, pero no reemplazan
+- Los tests automatizados (172 en total) dan confianza en la lógica, pero no reemplazan
   correr el sistema real, con el LLM real, en el sistema operativo real de la entrega —
   los dos bugs más interesantes del proyecto (Windows, y el LLM chico confundiendo rutas)
   solo aparecieron ahí, no en ningún test.
