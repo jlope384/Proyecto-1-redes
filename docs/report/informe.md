@@ -25,7 +25,7 @@ MCP define tres actores, presentes en este proyecto de forma explícita:
 
 - **Servidor MCP**: el proceso que expone herramientas (*tools*), datos de solo lectura
   (*resources*) y plantillas de conversación (*prompts*), y que efectivamente ejecuta las
-  acciones. En este proyecto hay cuatro: el servidor propio `mcp_server_sales`
+  acciones. En este proyecto hay tres: el servidor propio `mcp_server_sales`
   (`backend/mcp_server_sales/`), y los servidores oficiales de Anthropic para filesystem
   y git, lanzados como subprocesos (`@modelcontextprotocol/server-filesystem` vía `npx`,
   `mcp-server-git` vía `uvx`).
@@ -76,11 +76,11 @@ de lógica de negocio (`mcp_server_sales/core/server.py`, el `handle_message` qu
 cada objeto JSON-RPC) es compartido por dos transportes: uno local por stdio
 (`core/server.py`, un proceso hijo que lee/escribe líneas JSON por stdin/stdout — así
 corren hoy los tres servidores desde `app/main.py`) y un scaffold HTTP
-(`core/http_server.py`, pensado para exponer ese mismo servidor como proceso remoto en
-la nube). El desacoplar el framing del transporte de la lógica del protocolo es lo que
-permite que, cuando se complete el despliegue remoto (sección 6 del proyecto, aún
-pendiente — ver `docs/progress.md`), el cliente del chatbot lo consuma con el mismo
-`MCPClient`, solo cambiando qué clase de `transports/` se instancia.
+(`core/http_server.py`, usado para exponer ese mismo servidor como proceso remoto en la
+nube — ver sección 8.1). El desacoplar el framing del transporte de la lógica del
+protocolo es lo que permitió que, al completar el despliegue remoto (sección 6 del
+proyecto), el cliente del chatbot lo consumiera con el mismo `MCPClient`, solo cambiando
+qué clase de `transports/` se instancia.
 
 ## 8. Especificación de los servidores MCP usados
 
@@ -298,7 +298,7 @@ sobre un pipe de stdin/stdout de un proceso hijo.
   chico que los modelos con los que se prueba MCP en la documentación oficial) necesitaba
   un system prompt bastante más explícito para completar el escenario filesystem+git de
   forma confiable — un LLM pequeño de verdad se confunde con rutas relativas vs.
-  absolutas de una forma que un modelo grande probablemente no haría. Los 133 tests
+  absolutas de una forma que un modelo grande probablemente no haría. Los 172 tests
   automatizados dieron confianza en la lógica del protocolo, pero no reemplazaron correr
   el chatbot real, con el LLM real, en el sistema operativo real de la entrega.
 - **La capa de transporte elegida (HTTP simple, sin `Session` reusada) es la decisión más
