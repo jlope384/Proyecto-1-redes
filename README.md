@@ -1,7 +1,8 @@
 # Proyecto 1 - MCP Chatbot (CC3067 Redes)
 
-A terminal chatbot host that talks to a local LLM through [Ollama](https://ollama.com/) and, going
-forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
+A terminal (and optionally Web) chatbot host that talks to a local LLM through
+[Ollama](https://ollama.com/) and to tools exposed by Model Context Protocol (MCP) servers over
+JSON-RPC.
 
 ## Features implemented so far
 
@@ -73,8 +74,10 @@ forward, to tools exposed by Model Context Protocol (MCP) servers over JSON-RPC.
   same color convention as the terminal UI (cyan = user, green = bot reply, dim yellow = tool
   activity, red = errors). Run it with `python -m app.web` (see Usage below).
 
-More features (remote deployment, Wireshark analysis) will be added incrementally as the project
-progresses — see `docs/progress.md` for the live backlog.
+All ten graded functionalities from the assignment are implemented (see `docs/progress.md` for
+the full development log). The only open backlog item is an optional binary/blob MCP resource,
+left undone because the sales catalog has no images or binary documents to expose through one —
+see `docs/progress.md` for details.
 
 ## Requirements
 
