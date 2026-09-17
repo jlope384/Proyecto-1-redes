@@ -105,14 +105,14 @@ reales y se debuggearon con evidencia, no que "todo funcionó a la primera":
   (`transports/stdio.py`, `transports/http.py`) fue la decisión de diseño que más rindió:
   permitió correr el mismo servidor local y remoto, y agregar HTTP sin tocar ni un
   archivo de `tools/`, `resources/` o `prompts/`.
-- Los tests automatizados (172 en total) dan confianza en la lógica, pero no reemplazan
+- Los tests automatizados (174 en total) dan confianza en la lógica, pero no reemplazan
   correr el sistema real, con el LLM real, en el sistema operativo real de la entrega —
   los dos bugs más interesantes del proyecto (Windows, y el LLM chico confundiendo rutas)
   solo aparecieron ahí, no en ningún test.
-- La capa de transporte HTTP elegida (una llamada nueva a `requests.post` por mensaje,
-  sin reusar `Session`) es correcta pero no óptima — se nota con claridad en la captura de
-  Wireshark (un handshake TCP+TLS completo por cada llamada JSON-RPC). Queda anotado como
-  mejora futura en `docs/progress.md`, no se cambió para no tocar código ya verificado.
+- La capa de transporte HTTP original (una llamada nueva a `requests.post` por mensaje,
+  sin reusar `Session`) era correcta pero no óptima — se notó con claridad en la captura
+  de Wireshark (un handshake TCP+TLS completo por cada llamada JSON-RPC). Corregido en
+  una sesión posterior: `HttpTransport` ahora reusa una `requests.Session()`.
 
 ## 4. Preguntas esperables (y respuesta corta)
 

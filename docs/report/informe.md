@@ -213,11 +213,15 @@ ACK            63545 → 443  (conexión establecida)
 seguido de un handshake TLS (ver 9.4) y, al terminar esa petición, el cierre con
 `FIN, ACK` desde el cliente. La siguiente petición JSON-RPC (por ejemplo, la del
 `tools/list` que sigue al `initialize`) abre una conexión TCP **completamente nueva**
-desde otro puerto efímero local (`63547`, `63553`, ...). Esto es correcto mas no óptimo:
-funciona porque el proyecto es de bajo volumen, pero en un cliente de producción
-convendría reusar una `requests.Session()` para evitar pagar un handshake TCP+TLS
-completo por cada llamada — se deja anotado como mejora futura en
-`docs/progress.md`, no se cambia aquí para no alterar código ya verificado sin necesidad.
+desde otro puerto efímero local (`63547`, `63553`, ...). Esto era correcto mas no óptimo:
+funcionaba porque el proyecto es de bajo volumen, pero exponía el costo de no reusar
+conexiones. **Actualización posterior a esta captura**: en una sesión posterior se
+cambió `HttpTransport` para reusar una `requests.Session()` (keep-alive HTTP) en vez de
+`requests.post()` suelto por llamada — la captura y el análisis de esta sección quedan
+como estaban (son una traza real, tomada en su momento, no se re-captura solo para que
+coincida con el código actual), pero el comportamiento descrito aquí ya no refleja el
+transporte HTTP actual del proyecto; ver `docs/progress.md` y
+`backend/tests/test_http_transport.py`.
 
 ### 9.4 Capa de aplicación (TLS + JSON-RPC sobre HTTP)
 
@@ -298,11 +302,14 @@ sobre un pipe de stdin/stdout de un proceso hijo.
   chico que los modelos con los que se prueba MCP en la documentación oficial) necesitaba
   un system prompt bastante más explícito para completar el escenario filesystem+git de
   forma confiable — un LLM pequeño de verdad se confunde con rutas relativas vs.
-  absolutas de una forma que un modelo grande probablemente no haría. Los 172 tests
-  automatizados dieron confianza en la lógica del protocolo, pero no reemplazaron correr
-  el chatbot real, con el LLM real, en el sistema operativo real de la entrega.
-- **La capa de transporte elegida (HTTP simple, sin `Session` reusada) es la decisión más
-  cuestionable en retrospectiva**: funciona y es correcta para el alcance de este
-  proyecto, pero la captura de Wireshark (sección 9.3) deja ver con claridad el costo de
-  no reusar conexiones — un handshake TCP+TLS completo por cada llamada JSON-RPC. Es el
-  tipo de cosa que solo se nota mirando el tráfico real, no leyendo el código.
+  absolutas de una forma que un modelo grande probablemente no haría. Los tests
+  automatizados (174 en total) dieron confianza en la lógica del protocolo, pero no
+  reemplazaron correr el chatbot real, con el LLM real, en el sistema operativo real de
+  la entrega.
+- **La capa de transporte HTTP inicial (sin `Session` reusada) fue la decisión más
+  cuestionable en su momento**: la captura de Wireshark (sección 9.3) dejó ver con
+  claridad el costo de no reusar conexiones — un handshake TCP+TLS completo por cada
+  llamada JSON-RPC, algo que solo se nota mirando el tráfico real, no leyendo el código.
+  Corregido en una sesión posterior a la captura: `HttpTransport` ahora reusa una
+  `requests.Session()`, verificado tanto con pruebas unitarias como contra el servidor
+  HTTP real sobre un socket local.
