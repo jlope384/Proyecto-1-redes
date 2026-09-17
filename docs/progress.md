@@ -1016,25 +1016,79 @@ Read this file at the start of every autonomous session and update the Status se
       catalog's scope grows, or a genuinely new robustness angle if one occurs with real
       reasoning) - most of what's left otherwise needs the student directly.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case (`backend/mcp_server_sales/data/catalog.py`
+      still has no images/binary documents), nothing new to implement there. Also redid the
+      now-recurring start-of-session housekeeping documented in several earlier Done entries:
+      the sandbox container is fresh each session, so local git identity had reset back to
+      `Claude`/`noreply@anthropic.com` - reset it to the student's
+      (`jlope384`/`lop23415@uvg.edu.gt`) before committing anything; and `HEAD` again started
+      detached 3 commits ahead of local `main` (itself matching `origin/main`) - confirmed via
+      `git merge-base --is-ancestor origin/main HEAD`, then fast-forwarded local `main` and
+      confirmed nothing needed re-pushing (those 3 commits, from the previous session, were
+      already on `origin/main`).
+      Picked up the previous session's own suggested next avenue - the Wireshark
+      report/presentation both flagged `HttpTransport`'s lack of `requests.Session` reuse as a
+      real, concrete, implementable improvement (not a forced item): every JSON-RPC call opened
+      a brand new TCP+TLS connection, confirmed directly by the earlier Wireshark capture
+      (`docs/wireshark/`, report section 9.3). Implemented it:
+      1. `HttpTransport.__init__` (`app/mcp_client/transports/http.py`) now creates one
+         `requests.Session()` and reuses it for every `send()` call instead of calling the
+         module-level `requests.post()` fresh each time; `close()` now closes that session
+         instead of being a no-op. Updated the five existing mocked unit tests to patch the
+         session's `post`/`close` methods instead of the module-level function (same behavior
+         asserted, just against the new call site), and added two new ones: one proving two
+         `send()`/`receive()` round trips reuse the same session object (only one `Session`
+         created, `post` called twice on it), and one proving `close()` actually closes the
+         session. Verified for real over an actual live socket, not just mocked: started
+         `python -m mcp_server_sales --transport http` and drove a real `MCPClient` through
+         `initialize` -> `tools/list` -> `tools/call buscar_productos` -> `close()` against it,
+         confirming the same session object serves every call and the real HTTP responses are
+         still parsed correctly. Full suite: 174 passed (up from 172).
+      2. Updated `docs/report/informe.md` (sections 9.3 and 10) and `docs/presentacion.md`,
+         both of which specifically called out the missing session reuse as an open
+         limitation - the presentation script even had the explicit talking point "no se
+         cambió para no tocar código ya verificado," now false. Left the Wireshark capture's
+         own historical description of what the traffic looked like at capture time
+         unchanged (it's a real trace, not something to rewrite to match current code), but
+         added a clearly-marked note in both files that the behavior has since been fixed,
+         pointing at this session's change. Also fixed the stale "172 tests" figure in both
+         files (now 174) while already in there for the session-reuse fix - found via a
+         grep for the old count across all of `docs/`, not a separate pass.
+      Did not force a third item: re-ran the same kind of coverage-guided check the last
+      "found zero new bugs" session used (`coverage run -m pytest` + `coverage report -m`,
+      96% overall) before concluding there wasn't one. Every remaining gap traces to the same
+      already-documented categories - real subprocess/network integration glue exercised via
+      `python -m app.demo_mcp_sales`/real-socket tests rather than unit-mocked
+      (`app/web/api.py`'s `lifespan`, `mcp_server_sales/__main__.py`'s `if __name__ ==
+      "__main__"` block, `core/http_server.py`'s blocking `serve_forever()` loop), or an
+      `assert False` fallback line in a test file that only executes if that test's own
+      assertion already failed. Two commits this session, same reasoning as the two sessions
+      before it: real, verified work should decide the count, not a target number.
+
 ### A note for the next autonomous session: the low-hanging fruit is gone
-Two sessions in a row now (this one and the one before it, see the Done entries above) did a
-dedicated review pass over the whole `backend/` tree looking for real crash/robustness bugs
-and came back with nothing new. Combined with the eight-ish prior sessions that *did* keep
-finding real bugs, each in progressively narrower categories (malformed external data, then
-hangs, then interrupts, then concurrency), this is a genuine signal, not a fluke: the current
-feature set's defensive-coding surface is largely covered. A future session should still do a
-quick honest check (don't assume it's covered without looking), but should not force a
-crash-hunt narrative if a real, careful read doesn't turn up anything - see the working
-agreement's "no filler" rule. Real remaining avenues, roughly in order of how likely they are
-to produce genuine work:
-- Documentation-vs-code drift, the same way this session found two instances: re-read
+Several sessions in a row now (see the Done entries above) did a dedicated review pass over
+the whole `backend/` tree looking for real crash/robustness bugs and came back with nothing
+new; the most recent session's coverage-guided check (96% overall) reached the same
+conclusion again. Combined with the many prior sessions that *did* keep finding real bugs,
+each in progressively narrower categories (malformed external data, then hangs, then
+interrupts, then concurrency), this is a genuine signal, not a fluke: the current feature
+set's defensive-coding surface is largely covered. A future session should still do a quick
+honest check (don't assume it's covered without looking), but should not force a crash-hunt
+narrative if a real, careful read doesn't turn up anything - see the working agreement's "no
+filler" rule. Real remaining avenues, roughly in order of how likely they are to produce
+genuine work:
+- Documentation-vs-code drift, the same way multiple sessions now have found real instances
+  (most recently: a Wireshark-capture-era limitation, the HTTP transport's missing
+  `Session` reuse, that got fixed but the report/presentation still described as open): re-read
   `docs/spec/mcp_server_sales.md`, `README.md`, `docs/report/informe.md`, and
   `docs/presentacion.md` against the actual current code/test count/behavior, not just for
   internal consistency.
 - The binary-resource backlog item, if the catalog's scope ever actually grows (still blocked,
   re-checked again this session - see below).
-- A genuinely new angle on robustness this project's history hasn't tried yet, if one occurs to
-  you with real reasoning behind it (not "let's grep for more `.get()` calls").
+- A genuinely new angle on robustness or a real, concrete, previously-noted-but-not-yet-done
+  improvement (the way this session picked up the `Session`-reuse suggestion the report and
+  presentation had already flagged) - not a forced crash-hunt narrative.
 - Otherwise, most of what's left needs the student directly - see "Needs verification" and
   "Explicitly OUT of scope" below.
 
