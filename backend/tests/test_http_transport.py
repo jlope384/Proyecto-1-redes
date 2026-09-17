@@ -18,7 +18,7 @@ def _fake_response(content=b'{"jsonrpc": "2.0", "id": 1, "result": {}}', status_
 
 def test_send_then_receive_returns_parsed_json():
     transport = HttpTransport("http://example.test")
-    with patch("app.mcp_client.transports.http.requests.post", return_value=_fake_response()):
+    with patch.object(transport._session, "post", return_value=_fake_response()):
         transport.send({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
 
     assert transport.receive() == {"jsonrpc": "2.0", "id": 1, "result": {}}
@@ -29,8 +29,9 @@ def test_send_raises_connection_error_on_network_failure():
     # previously propagated a raw requests exception instead of the ConnectionError the
     # rest of the client/host code already knows how to handle.
     transport = HttpTransport("http://example.test")
-    with patch(
-        "app.mcp_client.transports.http.requests.post",
+    with patch.object(
+        transport._session,
+        "post",
         side_effect=requests.exceptions.ConnectionError("refused"),
     ):
         with pytest.raises(ConnectionError):
@@ -43,7 +44,7 @@ def test_send_raises_connection_error_on_http_error_status():
     response = _fake_response(status_code=500)
     response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
     transport = HttpTransport("http://example.test")
-    with patch("app.mcp_client.transports.http.requests.post", return_value=response):
+    with patch.object(transport._session, "post", return_value=response):
         with pytest.raises(ConnectionError):
             transport.send({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
 
@@ -52,8 +53,9 @@ def test_receive_raises_connection_error_on_empty_body():
     # Previously returned None, which crashed the caller with an uncaught TypeError
     # ("argument of type 'NoneType' is not iterable") instead of a clean ConnectionError.
     transport = HttpTransport("http://example.test")
-    with patch(
-        "app.mcp_client.transports.http.requests.post",
+    with patch.object(
+        transport._session,
+        "post",
         return_value=_fake_response(content=b""),
     ):
         transport.send({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
@@ -66,9 +68,33 @@ def test_receive_raises_connection_error_on_non_json_body():
     response = _fake_response(content=b"<html>502 Bad Gateway</html>")
     response.json.side_effect = ValueError("Expecting value: line 1 column 1 (char 0)")
     transport = HttpTransport("http://example.test")
-    with patch("app.mcp_client.transports.http.requests.post", return_value=response):
+    with patch.object(transport._session, "post", return_value=response):
         transport.send({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
 
     with pytest.raises(ConnectionError) as exc_info:
         transport.receive()
     assert "502 Bad Gateway" in str(exc_info.value)
+
+
+def test_send_reuses_the_same_session_across_calls():
+    # The whole point of switching from requests.post() to a Session: repeated calls
+    # (the initialize -> tools/list -> tools/call sequence a single MCPClient always
+    # makes) should reuse one underlying connection instead of opening a new TCP+TLS
+    # connection per call - this is what the Wireshark capture found was happening
+    # before this fix (docs/wireshark/, report section 9).
+    transport = HttpTransport("http://example.test")
+    with patch.object(transport._session, "post", return_value=_fake_response()) as post:
+        transport.send({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        transport.receive()
+        transport.send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        transport.receive()
+
+    assert post.call_count == 2
+
+
+def test_close_closes_the_underlying_session():
+    transport = HttpTransport("http://example.test")
+    with patch.object(transport._session, "close") as close:
+        transport.close()
+
+    close.assert_called_once()

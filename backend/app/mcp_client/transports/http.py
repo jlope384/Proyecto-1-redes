@@ -11,10 +11,16 @@ class HttpTransport:
     def __init__(self, base_url, path="/rpc"):
         self.url = base_url.rstrip("/") + path
         self._pending_response = None
+        # A plain requests.post() per call opens a brand new TCP+TLS connection every
+        # time - confirmed directly in the Wireshark capture against the Cloud Run
+        # deployment (docs/wireshark/, report section 9). A Session reuses one
+        # connection (HTTP keep-alive) across the initialize/tools-list/tools-call
+        # sequence a single MCPClient always makes.
+        self._session = requests.Session()
 
     def send(self, message):
         try:
-            response = requests.post(self.url, json=message, timeout=10)
+            response = self._session.post(self.url, json=message, timeout=10)
             response.raise_for_status()
         except requests.exceptions.RequestException as exc:
             raise ConnectionError(f"MCP server at {self.url} was unreachable: {exc}") from exc
@@ -35,4 +41,4 @@ class HttpTransport:
             ) from exc
 
     def close(self):
-        pass
+        self._session.close()
