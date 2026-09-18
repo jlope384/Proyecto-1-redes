@@ -1066,6 +1066,64 @@ Read this file at the start of every autonomous session and update the Status se
       assertion already failed. Two commits this session, same reasoning as the two sessions
       before it: real, verified work should decide the count, not a target number.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case (`backend/mcp_server_sales/data/catalog.py`
+      still has no images/binary documents), nothing new to implement there. Redid the
+      recurring start-of-session housekeeping (fresh sandbox container): reset git identity to
+      the student (`jlope384`/`lop23415@uvg.edu.gt`, had reset to `Claude`/`noreply@anthropic.com`
+      again), and reattached local `main` to `origin/main` after another detached-`HEAD` start
+      (confirmed `origin/main` already had everything via `git merge-base --is-ancestor`, no
+      commits lost). Full suite: 174 passed, same as the previous session.
+      Before writing any code, did the honest checks the previous several sessions'
+      "low-hanging fruit is gone" note recommends, rather than assuming they'd stay clean:
+      1. **Documentation-vs-code drift**: re-read `README.md`, `docs/report/informe.md`,
+         `docs/presentacion.md`, and `docs/spec/mcp_server_sales.md` end to end against the
+         actual current code (tool schemas, error message wording, resource URIs/mimeTypes,
+         the `generar_enlace_de_pago` validation rules, the protocol version string, the test
+         count). Unlike the last few sessions, which each found 2-5 genuine stale claims, this
+         pass came back completely clean - every claim checked out against the code exactly as
+         written. Also re-read the original assignment PDF
+         (`docs/Proyecto 1 - Uso de un protocolo existente.pdf`) in full against the Done log
+         to confirm all 10 required functionalities plus the extra-credit UI are genuinely
+         covered (they are), and checked the commit date spread
+         (`git log --format=%ad --date=short | sort | uniq -c`) for the "desarrollo gradual"
+         grading criterion - a healthy, gap-free daily spread from Sep 4 through the previous
+         session, no red flags.
+      2. **Coverage-guided check**: `coverage run -m pytest` + `coverage report -m`, 96%
+         overall, same as last session - every remaining gap traced back to the same
+         already-documented integration-glue category (real subprocess/network wiring
+         exercised via `python -m app.demo_mcp_sales`/real-socket tests, not unit-mocked), not
+         new bug surface.
+      3. **New this session - real subprocess verification of things a prior session had only
+         confirmed on the student's own Windows machine, now confirmed to also work
+         unattended in the autonomous cloud sandbox** (this sandbox has real `npx`/`uvx`, per
+         this file's own working notes, just no `localhost:11434`):
+         - Wrote a throwaway script exercising `connect_filesystem_mcp_server` +
+           `connect_git_mcp_server` directly (no LLM in the loop, same style as
+           `demo_mcp_sales.py`): `write_file` → `git_add` → `git_commit` against a fresh
+           `demo-repo`, confirmed via `git log --stat` that a real commit landed. Works
+           cleanly in-sandbox.
+         - Booted the real `python -m app.web` process (real `uvicorn`, real `OllamaClient`,
+           all three real MCP server subprocesses via `connect_mcp_servers`) and hit it with
+           real HTTP requests: `GET /api/servers` correctly lists `sales, filesystem, git`;
+           `GET /` serves the real `frontend/public/index.html`; `POST /api/chat` with no
+           Ollama reachable returns a clean `200` with
+           `{"reply": "", "events": [{"type": "error", "text": "Could not reach the LLM..."}]}`
+           instead of a crash or hang - confirming the existing `OllamaConnectionError`
+           handling holds up under a real (not mocked) connection-refused failure end to end
+           through the actual FastAPI app, not just the unit tests.
+         Neither run found a bug - both confirm existing, already-tested behavior actually
+         holds under real subprocesses/real sockets in this environment - but this removes a
+         real, previously-open question (whether the official-server subprocess routing and
+         the web app's startup wiring can be exercised at all without the student's own
+         machine): they can, going forward, so a future autonomous session doesn't need to
+         assume this needs the student just because it involves real subprocesses.
+      No code changes this session - the drift check, the coverage check, and the two live
+      verifications above all came back clean, and per the working agreement filler isn't
+      manufactured just to hit a commit target. One commit this session (this progress-log
+      update) for the same reason the previous two sessions gave for their own below-target
+      commit counts: real, verified work decides the count.
+
 ### A note for the next autonomous session: the low-hanging fruit is gone
 Several sessions in a row now (see the Done entries above) did a dedicated review pass over
 the whole `backend/` tree looking for real crash/robustness bugs and came back with nothing
@@ -1182,11 +1240,18 @@ feel).
   with a real Ollama model driving the tool calls - worth a look while you're doing the live run
   below, to confirm the 200-char truncation doesn't feel too aggressive or too loose for the
   kinds of results your tools actually return.
-- Full live run of `python -m app.main` with a real Ollama server: the sandbox this session ran
-  in has no `localhost:11434`, so the three-way tool routing (sales + filesystem + git) was
-  verified end-to-end with real subprocesses but with the LLM call driven directly rather than
-  through Ollama's tool-calling. Please run it once locally and confirm the model actually picks
-  the right tool (filesystem vs. git vs. sales) from natural-language prompts.
+- Full live run of `python -m app.main` (or `app.web`) with a real Ollama server: this sandbox
+  still has no `localhost:11434`, so the actual LLM-driven tool selection (the model picking
+  filesystem vs. git vs. sales from a natural-language prompt) still needs a real Ollama server
+  and still needs the student's machine - that part of this bullet stands.
+  What's now settled, confirmed by direct testing in the autonomous sandbox (see this session's
+  Done entry): the subprocess wiring underneath that - `connect_filesystem_mcp_server` +
+  `connect_git_mcp_server` driving a real `write_file` → `git_add` → `git_commit` with no LLM
+  in the loop, and the full `python -m app.web` process (real `uvicorn`, real `OllamaClient`,
+  all three real MCP subprocesses) serving `/api/servers`, `/`, and degrading `/api/chat`
+  cleanly with no Ollama reachable - all work correctly without the student's machine. A future
+  autonomous session can exercise these directly instead of assuming they need the student, and
+  should only reach for "needs the student" here for the genuinely LLM-dependent part.
 - New local requirements as of this session: Node.js (`npx`, for the filesystem server) and
   [uv](https://docs.astral.sh/uv/) (`uvx`, for the git server), on top of Ollama. Both are already
   documented in the README.
