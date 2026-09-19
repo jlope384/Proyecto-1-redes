@@ -1124,29 +1124,90 @@ Read this file at the start of every autonomous session and update the Status se
       update) for the same reason the previous two sessions gave for their own below-target
       commit counts: real, verified work decides the count.
 
-### A note for the next autonomous session: the low-hanging fruit is gone
-Several sessions in a row now (see the Done entries above) did a dedicated review pass over
-the whole `backend/` tree looking for real crash/robustness bugs and came back with nothing
-new; the most recent session's coverage-guided check (96% overall) reached the same
-conclusion again. Combined with the many prior sessions that *did* keep finding real bugs,
-each in progressively narrower categories (malformed external data, then hangs, then
-interrupts, then concurrency), this is a genuine signal, not a fluke: the current feature
-set's defensive-coding surface is largely covered. A future session should still do a quick
-honest check (don't assume it's covered without looking), but should not force a crash-hunt
-narrative if a real, careful read doesn't turn up anything - see the working agreement's "no
-filler" rule. Real remaining avenues, roughly in order of how likely they are to produce
-genuine work:
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case (`backend/mcp_server_sales/data/catalog.py`
+      still has no images/binary documents), nothing new to implement there. Redid the
+      recurring start-of-session housekeeping (fresh sandbox container): reset git identity to
+      the student (`jlope384`/`lop23415@uvg.edu.gt`, had reset to `Claude`/`noreply@anthropic.com`
+      again), and reattached local `main` to `origin/main` after another detached-`HEAD` start
+      (confirmed via `git fetch` + `git merge-base --is-ancestor origin/main HEAD` that
+      `origin/main` already had everything, then fast-forwarded, no commits lost). Full suite
+      at the start of this session: 174 passed, same as the previous session left it.
+      Per the previous few sessions' own note ("the low-hanging fruit is gone"), did not repeat
+      a blind crash-hunt pass over `backend/` a tenth time. Instead tried two different angles:
+      1. **Branch coverage instead of line coverage** (`coverage run --branch -m pytest` +
+         `coverage report -m`, since every prior coverage-guided pass in this project's history
+         only ever looked at line coverage): found two untested branches
+         (`app/chat/session.py:drop_last`'s empty-list no-op, `mcp_server_sales/core/server.py`'s
+         `serve()` skipping the stdout write for a `None` response/notification) - both are
+         trivial, already-correct defensive guards, not real bugs, and adding tests purely to
+         chase 100% branch coverage on them would be the kind of manufactured-filler work the
+         working agreement warns against. Not pursued further; noted here so a future session
+         doesn't waste time rediscovering the same two harmless branches.
+      2. **Business-logic/data correctness, not crash-safety** - a genuinely different angle
+         from the "malformed external input crashes a lookup" class nearly every prior fix in
+         this project's history has been. Re-read `mcp_server_sales/tools/sales_tools.py`'s
+         actual business logic (not just its exception-handling net, already reviewed many
+         times) line by line against the catalog data, and found a real one:
+         `generar_enlace_de_pago`'s stock check did `INVENTORY.get(sku, {}).get(talla, 0)` -
+         an unknown/mistyped `talla` (e.g. `"m"` instead of the real key `"M"`; size keys are
+         case-sensitive) silently defaulted to a stock count of `0`, indistinguishable from a
+         real, valid size that's genuinely sold out. Reproduced first
+         (`generar_enlace_de_pago("CAM-001", "m", 1)` raised `"Stock insuficiente ... hay 0"`,
+         a misleading message: the real problem is that `"m"` isn't a valid size at all, not
+         that the shirt is out of stock), then fixed it: `talla not in stock_por_talla` now
+         raises a distinct `"Talla desconocida para <sku>: <talla>. Tallas validas: <lista>"`
+         error before the stock comparison even runs. New regression test in
+         `tests/test_mcp_server_sales.py`, confirmed to fail against the pre-fix code (asserted
+         via `git stash` on just that file) and pass after. Documented the new distinct error
+         case in `docs/spec/mcp_server_sales.md` (previous sessions already established the
+         convention of keeping that file in sync with `sales_tools.py`'s actual validation
+         behavior). Verified against the real `mcp_server_sales` subprocess via `python -m
+         app.demo_mcp_sales` (still runs correctly end-to-end) and the full suite (175 passed,
+         up from 174).
+      Also synced the stale "174 en total" test-count claim in `docs/report/informe.md` and
+      `docs/presentacion.md` to 175, caused directly by this session's own new test (found via
+      a grep for the old count across `docs/`, not a separate drift-hunting pass this time).
+      Three commits this session: the `generar_enlace_de_pago` fix + its test + the spec-doc
+      update (one atomic unit), the report/presentation test-count sync, and this progress-log
+      update.
+
+### A note for the next autonomous session: the low-hanging fruit is gone (for crash-safety -
+### but a different angle just paid off)
+Several sessions in a row did a dedicated review pass over the whole `backend/` tree looking
+for real crash/robustness bugs (malformed external data reaching an unguarded lookup) and
+came back with nothing new; coverage-guided checks (line and, this session, branch coverage)
+reached the same conclusion. That specific vein - "untrusted external input crashes a
+lookup/attribute access" - really does look exhausted for the current feature set. But this
+session found a real bug by deliberately switching genre instead of intensity: not
+crash-safety, but **business-logic correctness** - re-reading `sales_tools.py`'s actual
+validation logic against the catalog data line by line turned up
+`generar_enlace_de_pago` silently treating an unknown/mistyped `talla` the same as a valid,
+sold-out one (see the Done entry above). The lesson for a future session: when a genre of
+review comes back clean several times running, don't re-run it a tenth time - switch genre
+(business-logic correctness, UX/error-message quality, data consistency) rather than
+intensity (a deeper read of the same kind of thing). Real remaining avenues, roughly in order
+of how likely they are to produce genuine work:
+- Business-logic/error-message correctness in the other tool handlers and prompts (the genre
+  that just paid off) - re-read `consultar_pedido`, `recomendar_complementos`,
+  `buscar_productos`, and both prompt builders for a similarly subtle "technically handled but
+  the wrong error/behavior" case; this session's own pass through `buscar_productos` and the
+  `consultar_pedido`/`recomendar_complementos` SKU-lookup paths came back clean, so this may
+  also run dry quickly - a quick honest check first, not a forced narrative.
 - Documentation-vs-code drift, the same way multiple sessions now have found real instances
-  (most recently: a Wireshark-capture-era limitation, the HTTP transport's missing
-  `Session` reuse, that got fixed but the report/presentation still described as open): re-read
-  `docs/spec/mcp_server_sales.md`, `README.md`, `docs/report/informe.md`, and
-  `docs/presentacion.md` against the actual current code/test count/behavior, not just for
-  internal consistency.
+  (most recently: a stale test count caused by this session's own new test, fixed the same
+  session): re-read `docs/spec/mcp_server_sales.md`, `README.md`, `docs/report/informe.md`,
+  and `docs/presentacion.md` against the actual current code/test count/behavior.
 - The binary-resource backlog item, if the catalog's scope ever actually grows (still blocked,
   re-checked again this session - see below).
-- A genuinely new angle on robustness or a real, concrete, previously-noted-but-not-yet-done
-  improvement (the way this session picked up the `Session`-reuse suggestion the report and
-  presentation had already flagged) - not a forced crash-hunt narrative.
+- Two harmless, already-correct branches with no test coverage, found via this session's
+  branch-coverage pass, **not worth a dedicated session** but easy to fold into whatever else
+  a future session is already touching in those files: `app/chat/session.py`'s
+  `drop_last()` on an empty message list (a no-op, correctly guarded), and
+  `mcp_server_sales/core/server.py`'s `serve()` skipping the stdout write when
+  `handle_message` returns `None` for a notification (also correctly guarded). Chasing these
+  on their own would be exactly the kind of manufactured-filler work the working agreement
+  warns against.
 - Otherwise, most of what's left needs the student directly - see "Needs verification" and
   "Explicitly OUT of scope" below.
 
