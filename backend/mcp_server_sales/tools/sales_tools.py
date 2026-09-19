@@ -97,7 +97,16 @@ def generar_enlace_de_pago(sku, talla, cantidad):
         raise ValueError(f"Cantidad invalida: {cantidad!r}. Debe ser un entero positivo.")
     if cantidad <= 0:
         raise ValueError(f"Cantidad invalida: {cantidad}. Debe ser un entero positivo.")
-    stock = INVENTORY.get(sku, {}).get(talla, 0)
+    stock_por_talla = INVENTORY.get(sku, {})
+    # `stock_por_talla.get(talla, 0)` alone can't tell an unknown/mistyped talla (e.g. "m"
+    # instead of "M" - dict keys are case-sensitive) apart from a real, valid size that's
+    # genuinely sold out: both used to fall through to the same "Stock insuficiente ... hay
+    # 0" message, which misleads the LLM/customer into thinking the size is out of stock
+    # instead of telling them the size string itself doesn't exist for this product.
+    if talla not in stock_por_talla:
+        tallas_validas = ", ".join(stock_por_talla) or "ninguna"
+        raise ValueError(f"Talla desconocida para {sku}: {talla!r}. Tallas validas: {tallas_validas}.")
+    stock = stock_por_talla[talla]
     if cantidad > stock:
         raise ValueError(f"Stock insuficiente para {sku} talla {talla}: hay {stock}, se pidieron {cantidad}")
     total = round(product["precio"] * cantidad, 2)

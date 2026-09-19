@@ -312,6 +312,29 @@ def test_tools_call_generar_enlace_de_pago_unknown_sku_returns_tool_error_not_cr
     assert "NOPE" in result["content"][0]["text"]
 
 
+def test_tools_call_generar_enlace_de_pago_rejects_unknown_talla_distinctly_from_no_stock():
+    response = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 58,
+            "method": "tools/call",
+            "params": {
+                "name": "generar_enlace_de_pago",
+                # "m" is not a valid size for CAM-001 (the real key is "M", INVENTORY keys
+                # are case-sensitive) - this used to silently fall through to a misleading
+                # "Stock insuficiente ... hay 0" message instead of naming the real problem.
+                "arguments": {"sku": "CAM-001", "talla": "m", "cantidad": 1},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "Talla desconocida" in text
+    assert "Stock insuficiente" not in text
+    assert "M" in text  # lists the real valid sizes
+
+
 def test_tools_call_generar_enlace_de_pago_rejects_quantity_over_stock():
     response = handle_message(
         {

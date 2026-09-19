@@ -136,8 +136,12 @@ Response:
 Errors (`isError: true`): `"SKU desconocido: <sku>"` if the SKU doesn't exist,
 `"Cantidad invalida: <cantidad>. Debe ser un entero positivo."` if `cantidad` isn't a
 positive integer (a fractional value, a non-positive value, or a JSON boolean, which Python
-treats as an `int` subclass), or `"Stock insuficiente para <sku> talla <talla>: hay <stock>,
-se pidieron <cantidad>"` if the requested quantity exceeds stock for that size.
+treats as an `int` subclass), `"Talla desconocida para <sku>: <talla>. Tallas validas:
+<lista>"` if `talla` isn't one of the sizes this SKU actually stocks (sizes are
+case-sensitive, e.g. `"m"` is not the same key as `"M"`) — distinct from a valid size that's
+simply sold out, which is the next error below — or `"Stock insuficiente para <sku> talla
+<talla>: hay <stock>, se pidieron <cantidad>"` if the requested quantity exceeds stock for
+that (valid) size.
 
 ## Prompts (`prompts/list`, `prompts/get`)
 
