@@ -303,7 +303,7 @@ sobre un pipe de stdin/stdout de un proceso hijo.
   un system prompt bastante más explícito para completar el escenario filesystem+git de
   forma confiable — un LLM pequeño de verdad se confunde con rutas relativas vs.
   absolutas de una forma que un modelo grande probablemente no haría. Los tests
-  automatizados (174 en total) dieron confianza en la lógica del protocolo, pero no
+  automatizados (175 en total) dieron confianza en la lógica del protocolo, pero no
   reemplazaron correr el chatbot real, con el LLM real, en el sistema operativo real de
   la entrega.
 - **La capa de transporte HTTP inicial (sin `Session` reusada) fue la decisión más
