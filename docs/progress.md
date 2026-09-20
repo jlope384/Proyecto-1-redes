@@ -1172,6 +1172,61 @@ Read this file at the start of every autonomous session and update the Status se
       update (one atomic unit), the report/presentation test-count sync, and this progress-log
       update.
 
+- [x] Re-checked the one remaining backlog item at the start of this session (the binary
+      resource, below): still no genuine use case (`backend/mcp_server_sales/data/catalog.py`
+      still has no images/binary documents), nothing new to implement there. Redid the
+      recurring start-of-session housekeeping (fresh sandbox container): git identity had reset
+      to `Claude`/`noreply@anthropic.com` again, set back to the student
+      (`jlope384`/`lop23415@uvg.edu.gt`); `HEAD` again started detached (this time 10 commits
+      ahead of local `main`, itself matching `origin/main`) - confirmed via `git merge-base
+      --is-ancestor origin/main HEAD` before fast-forwarding local `main`, no commits lost. Full
+      suite at the start of this session: 175 passed, same as the previous session left it.
+      Followed this file's own note below (don't repeat a straight crash-hunt re-read a tenth
+      time) and did a fresh, honest read of files no session had specifically re-read in a
+      while - `app/chat/session.py`, `app/main.py`, `app/web/api.py`,
+      `frontend/public/index.html`, `mcp_server_sales/tools/sales_tools.py`,
+      `mcp_server_sales/prompts/sales_prompts.py`, `mcp_server_sales/resources/*.py`,
+      `mcp_server_sales/core/server.py`, `app/mcp_client/client.py`, `protocol.py`,
+      `registry.py`, `adapters.py`, both transports, `interaction_logger.py`, and
+      `app/ui/console.py` - rather than assuming the previous sessions' "clean" conclusion still
+      holds without checking it myself. Found and fixed one real, previously-untested crash bug,
+      plus one real, unrelated documentation bug found along the way:
+      1. `OllamaClient.chat_raw` (`app/llm/ollama_client.py`) validated that the top-level
+         Ollama response body is a dict with a `"message"` key, but never validated the *value*
+         of that key. A well-formed body like `{"message": "oops"}` or `{"message": null}`
+         (e.g. a future Ollama version or a proxy in front of it returning something
+         unexpected, same "don't trust an external system's response shape" reasoning behind
+         nearly every earlier fix in this project) passed straight through `chat_raw`'s checks
+         unchanged, and `run_turn`'s very next line, `message.get("tool_calls")`, raised an
+         uncaught `AttributeError` on that string/None instead of the documented
+         `OllamaConnectionError` that keeps the chatbot session alive after a bad LLM response.
+         Reproduced first with a scripted fake `requests.post` response before fixing it (same
+         methodology as every prior crash fix here), then added a `isinstance(message, dict)`
+         check right after the existing top-level checks. New regression test
+         (`tests/test_ollama_client.py`), confirmed to fail against the pre-fix code (via
+         `git stash` on just that file) and pass after. Verified against the real
+         `mcp_server_sales` subprocess via `python -m app.demo_mcp_sales` (still runs correctly
+         end-to-end - this fix doesn't touch the sales server, but re-running it after every
+         code change is this project's own established habit) and the full suite (176 passed,
+         up from 175).
+      2. `README.md` linked `docs/annotated-Propuesta mcp.pdf` for the use-case writeup, but the
+         file actually on disk was named `annotated-Propuesta%20mcp.pdf` - a literal `%20`
+         URL-encoding artifact in the filename itself (probably left over from how the PDF was
+         originally saved), not a real space. The path in the README never resolved to an
+         existing file. Renamed the file to a clean, space-free `annotated-propuesta-mcp.pdf`
+         (`git mv`, so the rename is tracked) and fixed the README reference to match. Verified
+         by listing the exact bytes of the old filename first (confirmed it really was `%20`,
+         not an actual space needing quoting) before renaming.
+      Also synced the stale "175 en total" test-count claim in `docs/report/informe.md` and
+      `docs/presentacion.md` to 176, caused directly by this session's own new test (found via
+      the same grep-for-the-old-count check every recent session has used before writing a new
+      count into these files).
+      Three commits this session: the `OllamaClient` fix + its test, the README/PDF-filename
+      fix, and the report/presentation test-count sync - each its own atomic, independently
+      verified unit, same reasoning the last several sessions have given for their commit
+      counts. The binary-resource item remains the only open backlog item, still genuinely
+      blocked for the same reason as every session before this one.
+
 ### A note for the next autonomous session: the low-hanging fruit is gone (for crash-safety -
 ### but a different angle just paid off)
 Several sessions in a row did a dedicated review pass over the whole `backend/` tree looking
@@ -1271,9 +1326,10 @@ feel).
   re-verified via `python -m app.demo_mcp_sales`, but neither was exercised through a live
   `python -m app.main` session with a real Ollama model, for the same sandbox reason as the rest
   of this list. The `OllamaClient` one is worth a real look: if you ever see the chatbot print an
-  `[error]` line mentioning "unexpected response shape" during a live run, that means Ollama
-  returned something other than a normal chat message (e.g. an error payload) and would be a
-  real sign worth investigating, not a false positive.
+  `[error]` line mentioning "unexpected response shape" or (new, from a later session)
+  "unexpected 'message' shape" during a live run, that means Ollama returned something other
+  than a normal chat message (e.g. an error payload, or a message whose value isn't the usual
+  object) and would be a real sign worth investigating, not a false positive.
 - New this session: the four bug fixes above (`buscar_productos` crash, `generar_enlace_de_pago`
   validation, `StdioTransport` hardening, the startup subprocess-leak fix in `app/main.py`) are
   all unit-tested and the sales server was re-verified against its real subprocess via
