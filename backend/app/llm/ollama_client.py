@@ -46,7 +46,19 @@ class OllamaClient:
                 f"Ollama at {self.base_url} returned an unexpected response shape (no 'message' "
                 f"key): {data!r}"
             )
-        return data["message"]
+        message = data["message"]
+        if not isinstance(message, dict):
+            # The top-level body can be a well-formed dict with a "message" key whose *value*
+            # still isn't the expected object (e.g. {"message": "oops"} or {"message": null}).
+            # run_turn calls message.get("tool_calls") on whatever chat_raw returns with no
+            # further guard, so a non-dict message used to raise an uncaught AttributeError
+            # straight out of run_turn instead of the OllamaConnectionError it already knows
+            # how to handle - same class of bug as the top-level shape checks above, just one
+            # level deeper.
+            raise OllamaConnectionError(
+                f"Ollama at {self.base_url} returned an unexpected 'message' shape: {message!r}"
+            )
+        return message
 
     def chat(self, messages):
         """Send the full message history and return the assistant's reply text."""

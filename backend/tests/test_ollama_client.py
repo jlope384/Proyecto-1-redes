@@ -86,6 +86,26 @@ def test_chat_raw_raises_ollama_connection_error_on_missing_message_key():
     assert False, "expected OllamaConnectionError to be raised"
 
 
+def test_chat_raw_raises_ollama_connection_error_on_non_dict_message_value():
+    # A well-formed JSON body with a "message" key whose *value* isn't an object (e.g. a bare
+    # string) used to pass straight through chat_raw's shape checks, since those only looked at
+    # the top-level body - run_turn then called message.get("tool_calls") on that string with no
+    # further guard, raising an uncaught AttributeError instead of the documented
+    # OllamaConnectionError that keeps the chatbot session alive after a bad LLM response.
+    client = OllamaClient(model="test-model")
+    fake_response = MagicMock()
+    fake_response.raise_for_status.return_value = None
+    fake_response.json.return_value = {"message": "not an object"}
+
+    with patch("app.llm.ollama_client.requests.post", return_value=fake_response):
+        try:
+            client.chat_raw([{"role": "user", "content": "hi"}])
+        except OllamaConnectionError as exc:
+            assert "unexpected 'message' shape" in str(exc)
+            return
+    assert False, "expected OllamaConnectionError to be raised"
+
+
 def test_chat_raw_raises_ollama_connection_error_on_non_dict_json_body():
     # A 200 response can be valid JSON without being a JSON object - e.g. a bare `null`. A
     # scalar like that isn't iterable, so `"message" not in data` used to raise an uncaught
