@@ -18,7 +18,7 @@ JSON-RPC.
 - **Sales MCP server (local, industry use case)**: `backend/mcp_server_sales/` is a hand-rolled
   JSON-RPC server exposing `buscar_productos`, `consultar_inventario`, `consultar_pedido`,
   `recomendar_complementos` and `generar_enlace_de_pago` as tools, plus shipping/warranty/returns
-  policies as resources. See `docs/annotated-Propuesta mcp.pdf` for the use-case writeup.
+  policies as resources. See `docs/annotated-propuesta-mcp.pdf` for the use-case writeup.
 - **Chatbot uses the MCP server via the LLM's tool-calling**: `backend/app/main.py` gives Ollama
   the sales server's tools; when the model decides to call one, the chatbot executes it through the
   real MCP client and feeds the result back for a grounded answer.
